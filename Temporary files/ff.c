@@ -1152,7 +1152,6 @@ static FRESULT move_window (	/* Returns FR_OK or FR_DISK_ERR */
 
 
 #if !FF_FS_READONLY
-//WE GOT UNTIL HERE YAY
 /*-----------------------------------------------------------------------*/
 /* Synchronize filesystem and data on the storage                        */
 /*-----------------------------------------------------------------------*/
@@ -1747,7 +1746,7 @@ static FRESULT dir_clear (	/* Returns FR_OK or FR_DISK_ERR */
 /*-----------------------------------------------------------------------*/
 
 static FRESULT dir_sdi (	/* FR_OK(0):succeeded, !=0:error */
-	DIR* dp,		/* Pointer to directory object */
+	DIR_* dp,		/* Pointer to directory object */
 	DWORD ofs		/* Offset of directory table */
 )
 {
@@ -1795,7 +1794,7 @@ static FRESULT dir_sdi (	/* FR_OK(0):succeeded, !=0:error */
 /*-----------------------------------------------------------------------*/
 
 static FRESULT dir_next (	/* FR_OK(0):succeeded, FR_NO_FILE:End of table, FR_DENIED:Could not stretch */
-	DIR* dp,				/* Pointer to the directory object */
+	DIR_* dp,				/* Pointer to the directory object */
 	int stretch				/* 0: Do not stretch table, 1: Stretch table if needed */
 )
 {
@@ -1856,7 +1855,7 @@ static FRESULT dir_next (	/* FR_OK(0):succeeded, FR_NO_FILE:End of table, FR_DEN
 /*-----------------------------------------------------------------------*/
 
 static FRESULT dir_alloc (	/* FR_OK(0):succeeded, !=0:error */
-	DIR* dp,				/* Pointer to the directory object */
+	DIR_* dp,				/* Pointer to the directory object */
 	UINT n_ent				/* Number of contiguous entries to allocate */
 )
 {
@@ -2180,7 +2179,7 @@ static DWORD xsum32 (	/* Returns 32-bit checksum */
 /*------------------------------------*/
 
 static FRESULT load_xdir (	/* FR_INT_ERR: invalid entry block */
-	DIR* dp					/* Reading directory object pointing top of the entry block to load */
+	DIR_* dp					/* Reading directory object pointing top of the entry block to load */
 )
 {
 	FRESULT res;
@@ -2249,7 +2248,7 @@ static void init_alloc_info (
 /*------------------------------------------------*/
 
 static FRESULT load_obj_xdir (
-	DIR* dp,			/* Blank directory object to be used to access containing directory */
+	DIR_* dp,			/* Blank directory object to be used to access containing directory */
 	const FFOBJID* obj	/* Object with its containing directory information */
 )
 {
@@ -2278,7 +2277,7 @@ static FRESULT load_obj_xdir (
 /*----------------------------------------*/
 
 static FRESULT store_xdir (
-	DIR* dp				/* Pointer to the directory object */
+	DIR_* dp				/* Pointer to the directory object */
 )
 {
 	FRESULT res;
@@ -2356,7 +2355,7 @@ static void create_xdir (
 #define DIR_READ_LABEL(dp) dir_read(dp, 1)
 
 static FRESULT dir_read (
-	DIR* dp,		/* Pointer to the directory object */
+	DIR_* dp,		/* Pointer to the directory object */
 	int vol			/* Filtered by 0:file/directory or 1:volume label */
 )
 {
@@ -2434,7 +2433,7 @@ static FRESULT dir_read (
 /*-----------------------------------------------------------------------*/
 
 static FRESULT dir_find (	/* FR_OK(0):succeeded, !=0:error */
-	DIR* dp					/* Pointer to the directory object with the file name */
+	DIR_* dp					/* Pointer to the directory object with the file name */
 )
 {
 	FRESULT res;
@@ -2515,7 +2514,7 @@ static FRESULT dir_find (	/* FR_OK(0):succeeded, !=0:error */
 /*-----------------------------------------------------------------------*/
 
 static FRESULT dir_register (	/* FR_OK:succeeded, FR_DENIED:no free entry or too many SFN collision, FR_DISK_ERR:disk error */
-	DIR* dp						/* Target directory with object name to be created */
+	DIR_* dp						/* Target directory with object name to be created */
 )
 {
 	FRESULT res;
@@ -2621,7 +2620,7 @@ static FRESULT dir_register (	/* FR_OK:succeeded, FR_DENIED:no free entry or too
 /*-----------------------------------------------------------------------*/
 
 static FRESULT dir_remove (	/* FR_OK:Succeeded, FR_DISK_ERR:A disk error */
-	DIR* dp					/* Directory object pointing the entry to be removed */
+	DIR_* dp					/* Directory object pointing the entry to be removed */
 )
 {
 	FRESULT res;
@@ -2667,7 +2666,7 @@ static FRESULT dir_remove (	/* FR_OK:Succeeded, FR_DISK_ERR:A disk error */
 /*-----------------------------------------------------------------------*/
 
 static void get_fileinfo (
-	DIR* dp,			/* Pointer to the directory object */
+	DIR_* dp,			/* Pointer to the directory object */
 	FILINFO* fno		/* Pointer to the file information to be filled */
 )
 {
@@ -2717,10 +2716,12 @@ static void get_fileinfo (
 		fno->fsize = (fno->fattrib & AM_DIR) ? 0 : ld_qword(fs->dirbuf + XDIR_FileSize);	/* Size */
 		fno->ftime = ld_word(fs->dirbuf + XDIR_ModTime + 0);	/* Time */
 		fno->fdate = ld_word(fs->dirbuf + XDIR_ModTime + 2);	/* Date */
+		fno->inode=INODE(dp);
 		return;
 	} else
 #endif
 	{	/* FAT/FAT32 volume */
+		fno->inode=INODE(dp); //SC: TODO -> check how to insert this line
 		if (dp->blk_ofs != 0xFFFFFFFF) {	/* Get LFN if available */
 			si = di = 0;
 			hs = 0;
@@ -2897,15 +2898,16 @@ static int pattern_match (	/* 0:mismatched, 1:matched */
 /*-----------------------------------------------------------------------*/
 
 static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not create */
-	DIR* dp,					/* Pointer to the directory object */
-	const TCHAR** path			/* Pointer to pointer to the segment in the path string */
+	DIR_* dp,					/* Pointer to the directory object */
+	const /*TCHAR*/char **path	/* Pointer to pointer to the segment in the path string */
 )
 {
 #if FF_USE_LFN		/* LFN configuration */
 	BYTE b, cf;
-	WCHAR wc;
+	char32_t wc; //SC: fdf transforms WCHAR w in char32_t w; not sure if this variable could be the old w variable
 	WCHAR *lfn;
-	const TCHAR* p;
+	//char32_t w; // SC: we will use wc as w
+	const /*TCHAR*/char *p;
 	DWORD uc;
 	UINT i, ni, si, di;
 
@@ -2913,6 +2915,8 @@ static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not cr
 	/* Create LFN into LFN working buffer */
 	p = *path; lfn = dp->obj.fs->lfnbuf; di = 0;
 	for (;;) {
+		wc = miosix::Unicode::nextUtf8(p);/*p[si++];*/					/* Get a character */
+		if(wc == miosix::Unicode::invalid || wc > 0xffff) return FR_INVALID_NAME;
 		uc = tchar2uni(&p);			/* Get a character */
 		if (uc == 0xFFFFFFFF) return FR_INVALID_NAME;		/* Invalid code or UTF decode error */
 		if (uc >= 0x10000) lfn[di++] = (WCHAR)(uc >> 16);	/* Store high surrogate if needed */
@@ -2920,6 +2924,8 @@ static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not cr
 		if (wc < ' ' || IsSeparator(wc)) break;	/* Break if end of the path or a separator is found */
 		if (wc < 0x80 && strchr("*:<>|\"\?\x7F", (int)wc)) return FR_INVALID_NAME;	/* Reject illegal characters for LFN */
 		if (di >= FF_MAX_LFN) return FR_INVALID_NAME;	/* Reject too long name */
+		#if !_LFN_UNICODE
+        #error "Unsupported" //SC: don't know if it is useful
 		lfn[di++] = wc;				/* Store the Unicode character */
 	}
 	if (wc < ' ') {				/* Stopped at end of the path? */
@@ -3101,8 +3107,8 @@ static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not cr
 /*-----------------------------------------------------------------------*/
 
 static FRESULT follow_path (	/* FR_OK(0): successful, !=0: error code */
-	DIR* dp,					/* Directory object to return last directory and found object */
-	const TCHAR* path			/* Full-path string to find a file or directory */
+	DIR_* dp,					/* Directory object to return last directory and found object */
+	const /*TCHAR*/char *path			/* Full-path string to find a file or directory */
 )
 {
 	FRESULT res;
@@ -3435,13 +3441,14 @@ static UINT find_volume (	/* Returns BS status found in the hosting drive */
 /*-----------------------------------------------------------------------*/
 
 static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
-	const TCHAR** path,			/* Pointer to pointer to the path name (drive number) */
-	FATFS** rfs,				/* Pointer to pointer to the found filesystem object */
+	FATFS *fs,          /* By TFT: added to get rid of static variables */
+	/*const TCHAR** path,*/			/* Pointer to pointer to the path name (drive number) */
+	/*FATFS** rfs,*/				/* Pointer to pointer to the found filesystem object */
 	BYTE mode					/* Desiered access mode to check write protection */
 )
 {
 	int vol;
-	FATFS *fs;
+	//FATFS *fs;
 	DSTATUS stat;
 	LBA_t bsect;
 	DWORD tsect, sysect, fasize, nclst, szbfat;
@@ -3450,21 +3457,21 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 
 
 	/* Get logical drive number */
-	*rfs = 0;
-	vol = get_ldnumber(path);
+	//*rfs = 0;
+	vol = 0;//get_ldnumber(path);
 	if (vol < 0) return FR_INVALID_DRIVE;
 
 	/* Check if the filesystem object is valid or not */
-	fs = FatFs[vol];					/* Get pointer to the filesystem object */
+	//fs = FatFs[vol];					/* Get pointer to the filesystem object */
 	if (!fs) return FR_NOT_ENABLED;		/* Is the filesystem object available? */
 #if FF_FS_REENTRANT
 	if (!lock_volume(fs, 1)) return FR_TIMEOUT;	/* Lock the volume, and system if needed */
 #endif
-	*rfs = fs;							/* Return pointer to the filesystem object */
+	//*rfs = fs;							/* Return pointer to the filesystem object */
 
 	mode &= (BYTE)~FA_READ;				/* Desired access mode, write access or not */
 	if (fs->fs_type != 0) {				/* If the volume has been mounted */
-		stat = disk_status(fs->pdrv);
+		stat = RES_OK;//disk_status(fs->pdrv);
 		if (!(stat & STA_NOINIT)) {		/* and the physical drive is kept initialized */
 			if (!FF_FS_READONLY && mode && (stat & STA_PROTECT)) {	/* Check write protection if needed */
 				return FR_WRITE_PROTECTED;
@@ -3639,7 +3646,7 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 	}
 
 	fs->fs_type = (BYTE)fmt;/* FAT sub-type (the filesystem object gets valid) */
-	fs->id = ++Fsid;		/* Volume mount ID */
+	fs->id = miosix::atomicAddExchange(&Fsid,1)/*++Fsid*/;		/* Volume mount ID */
 #if FF_USE_LFN == 1
 	fs->lfnbuf = LfnBuf;	/* Static LFN working buffer */
 #if FF_FS_EXFAT
@@ -3708,22 +3715,23 @@ static FRESULT validate (	/* Returns FR_OK or FR_INVALID_OBJECT */
 
 FRESULT f_mount (
 	FATFS* fs,			/* Pointer to the filesystem object to be registered (NULL:unmount)*/
-	const TCHAR* path,	/* Logical drive number to be mounted/unmounted */
-	BYTE opt			/* Mount option: 0=Do not mount (delayed mount), 1=Mount immediately */
+	/*const TCHAR* path,*/	/* Logical drive number to be mounted/unmounted */
+	BYTE opt,			/* Mount option: 0=Do not mount (delayed mount), 1=Mount immediately */
+	bool umount
 )
 {
 	FATFS *cfs;
 	int vol;
 	FRESULT res;
-	const TCHAR *rp = path;
+	//const TCHAR *rp = path; //SC: fdf removed the path variable
 
 
 	/* Get volume ID (logical drive number) */
-	vol = get_ldnumber(&rp);
+	vol = 0;//get_ldnumber(&path);
 	if (vol < 0) return FR_INVALID_DRIVE;
 	cfs = FatFs[vol];			/* Pointer to the filesystem object of the volume */
 
-	if (cfs) {					/* Unregister current filesystem object if regsitered */
+	if (/*cfs*/umount) {					/* Unregister current filesystem object if regsitered */
 		FatFs[vol] = 0;
 #if FF_FS_LOCK
 		clear_share(cfs);
@@ -3734,8 +3742,9 @@ FRESULT f_mount (
 		cfs->fs_type = 0;		/* Invalidate the filesystem object to be unregistered */
 	}
 
-	if (fs) {					/* Register new filesystem object */
+	if (/*fs*/!umount) {					/* Register new filesystem object */
 		fs->pdrv = LD2PD(vol);	/* Volume hosting physical drive */
+		memset(fs->Files,0,sizeof(FATFS::Files));
 #if FF_FS_REENTRANT				/* Create a volume mutex */
 		fs->ldrv = (BYTE)vol;	/* Owner volume ID */
 		if (!ff_mutex_create(vol)) return FR_INT_ERR;
@@ -3750,12 +3759,14 @@ FRESULT f_mount (
 #endif
 #endif
 		fs->fs_type = 0;		/* Invalidate the new filesystem object */
-		FatFs[vol] = fs;		/* Register new fs object */
+		//FatFs[vol] = fs;		/* Register new fs object */
 	}
-
+	// SC: TODO -> check this if, in fatfs 2013 was if (!fs || opt != 1)
+	// modified by terraneo : if (/*!fs*/umount || opt != 1)
+	// now is this:
 	if (opt == 0) return FR_OK;	/* Do not mount now, it will be mounted in subsequent file functions */
 
-	res = mount_volume(&path, &fs, 0);	/* Force mounted the volume */
+	res = mount_volume(fs, /*&path,*/ 0);	/* Force mounted the volume */
 	LEAVE_FF(fs, res);
 }
 
@@ -3767,14 +3778,15 @@ FRESULT f_mount (
 /*-----------------------------------------------------------------------*/
 
 FRESULT f_open (
+	FATFS *fs,          /* By TFT: added to get rid of static variables */
 	FIL* fp,			/* Pointer to the blank file object */
-	const TCHAR* path,	/* Pointer to the file name */
+	const /*TCHAR*/char *path,	/* Pointer to the file name */
 	BYTE mode			/* Access mode and open mode flags */
 )
 {
 	FRESULT res;
-	DIR dj;
-	FATFS *fs;
+	DIR_ dj;
+
 #if !FF_FS_READONLY
 	DWORD cl, bcs, clst, tm;
 	LBA_t sc;
@@ -3787,7 +3799,7 @@ FRESULT f_open (
 
 	/* Get logical drive number */
 	mode &= FF_FS_READONLY ? FA_READ : FA_READ | FA_WRITE | FA_CREATE_ALWAYS | FA_CREATE_NEW | FA_OPEN_ALWAYS | FA_OPEN_APPEND;
-	res = mount_volume(&path, &fs, mode);
+	res = mount_volume(/*&path,*/ &fs, mode); // SC: TODO -> check the declaration of this function, fdf has modified it
 	if (res == FR_OK) {
 		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
@@ -4059,6 +4071,7 @@ FRESULT f_read (
 
 
 #if !FF_FS_READONLY
+// SC: ARRIVED HERE 
 /*-----------------------------------------------------------------------*/
 /* Write File                                                            */
 /*-----------------------------------------------------------------------*/
