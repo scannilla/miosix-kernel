@@ -27,7 +27,6 @@
 
 #pragma once
 
-#include "config/miosix_settings.h"
 #include "interfaces/portability.h"
 #include "scheduler.h"
 
@@ -36,9 +35,8 @@ namespace miosix {
 //These are a couple of global variables and a function that are part of the
 //internal implementation of the kernel and are defined in kernel.cpp
 //User code should not know about these nor try to use them.
-extern volatile int kernel_running;///\internal Do not use outside the kernel
+extern volatile int kernelRunning;///\internal Do not use outside the kernel
 extern volatile bool pendingWakeup;///\internal Do not use outside the kernel
-extern volatile Thread *cur;///\internal Do not use outside the kernel
 extern bool IRQwakeThreads(long long currentTime);///\internal Do not use outside the kernel
 
 /**
@@ -46,13 +44,13 @@ extern bool IRQwakeThreads(long long currentTime);///\internal Do not use outsid
  */
 inline void IRQtimerInterrupt(long long currentTime)
 {
-    miosix_private::IRQstackOverflowCheck();
+    Thread::IRQstackOverflowCheck();
     bool hptw = IRQwakeThreads(currentTime);
     if(currentTime >= Scheduler::IRQgetNextPreemption() || hptw)
     {
         //End of the burst || a higher priority thread has woken up
         Scheduler::IRQfindNextThread();//If the kernel is running, preempt
-        if(kernel_running!=0) pendingWakeup=true;
+        if(kernelRunning!=0) pendingWakeup=true;
     }
 }
 

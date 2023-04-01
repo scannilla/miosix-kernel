@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2010, 2011 by Terraneo Federico                         *
+ *   Copyright (C) 2010-2023 by Terraneo Federico                          *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -30,22 +30,25 @@
  * posix thread API to the Miosix thread API.
  */
 
-#include <pthread.h>
 #include <sched.h>
 #include <errno.h>
 #include <stdexcept>
 #include <algorithm>
-#include "kernel.h"
 #include "error.h"
 #include "pthread_private.h"
+#include "stdlib_integration/libc_integration.h"
 
 using namespace miosix;
+
+namespace miosix {
+void IRQaddToSleepingList(SleepData *x);
+void IRQremoveFromSleepingList(SleepData *x);
+} //namespace miosix
 
 //
 // Newlib's pthread.h has been patched since Miosix 1.68 to contain a definition
 // for pthread_mutex_t and pthread_cond_t that allows a fast implementation
-// of mutexes and condition variables. This *requires* to use gcc 4.5.2 with
-// Miosix specific patches.
+// of mutexes and condition variables. This *requires* to use an up-to-date gcc.
 //
 
 //These functions needs to be callable from C
@@ -60,17 +63,19 @@ int pthread_create(pthread_t *pthread, const pthread_attr_t *attr,
 {
     Thread::Options opt=Thread::JOINABLE;
     unsigned int stacksize=STACK_DEFAULT_FOR_PTHREAD;
-    unsigned int priority=1;
+    Priority priority=MAIN_PRIORITY;
     if(attr!=NULL)
     {
         if(attr->detachstate==PTHREAD_CREATE_DETACHED)
             opt=Thread::DEFAULT;
         stacksize=attr->stacksize;
+        #ifndef SCHED_TYPE_EDF
         // Cap priority value in the range between 0 and PRIORITY_MAX-1
-        int prio=std::min(std::max(0, attr->schedparam.sched_priority),
+        int prio=std::min(std::max(0,attr->schedparam.sched_priority),
                           PRIORITY_MAX-1);
         // Swap unix-based priority back to the miosix one.
         priority=(PRIORITY_MAX-1)-prio;
+        #endif //SCHED_TYPE_EDF
     }
     Thread *result=Thread::create(start,stacksize,priority,arg,opt);
     if(result==0) return EAGAIN;
@@ -111,7 +116,9 @@ int pthread_attr_init(pthread_attr_t *attr)
     attr->detachstate=PTHREAD_CREATE_JOINABLE;
     attr->stacksize=STACK_DEFAULT_FOR_PTHREAD;
     //Default priority level is one above minimum.
+    #ifndef SCHED_TYPE_EDF
     attr->schedparam.sched_priority=PRIORITY_MAX-1-MAIN_PRIORITY;
+    #endif //SCHED_TYPE_EDF
     return 0;
 }
 
@@ -147,23 +154,24 @@ int pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize)
     return 0;
 }
 
-int pthread_attr_getschedparam (const pthread_attr_t *attr,
-                                struct sched_param *param)
+int pthread_attr_getschedparam(const pthread_attr_t *attr,
+                               struct sched_param *param)
 {
     *param = attr->schedparam;
     return 0;
 }
 
-int pthread_attr_setschedparam (pthread_attr_t *attr,
-                                const struct sched_param *param)
+int pthread_attr_setschedparam(pthread_attr_t *attr,
+                               const struct sched_param *param)
 {
     attr->schedparam = *param;
     return 0;
 }
 
+#ifndef SCHED_TYPE_EDF
 int sched_get_priority_max(int policy)
 {
-    (void) policy;
+    (void)policy;
 
     // Unix-like thread priorities: max priority is zero.
     return 0;
@@ -171,12 +179,13 @@ int sched_get_priority_max(int policy)
 
 int sched_get_priority_min(int policy)
 {
-    (void) policy;
+    (void)policy;
 
     // Unix-like thread priorities: min priority is a value above zero.
     // The value for PRIORITY_MAX is configured in miosix_settings.h
     return PRIORITY_MAX - 1;
 }
+#endif //SCHED_TYPE_EDF
 
 int sched_yield()
 {
@@ -282,36 +291,34 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 // Condition variable API
 //
 
+static_assert(sizeof(IntrusiveList<CondData>)==sizeof(pthread_cond_t),"Invalid pthread_cond_t size");
+
 int pthread_cond_init(pthread_cond_t *cond, const pthread_condattr_t *attr)
 {
     //attr is currently not considered
-    cond->first=0;
-    //No need to initialize cond->last
+    //NOTE: pthread_condattr_setclock is not supported, the only clock supported
+    //for pthread_cond_timedwait is CLOCK_MONOTONIC
+    new (cond) IntrusiveList<CondData>; //Placement new as cond is a C type
     return 0;
 }
 
 int pthread_cond_destroy(pthread_cond_t *cond)
 {
-    if(cond->first!=0) return EBUSY;
+    auto *condList=reinterpret_cast<IntrusiveList<CondData>*>(cond);
+    if(!condList->empty()) return EBUSY;
+    condList->~IntrusiveList<CondData>(); //Call destructor manually
     return 0;
 }
 
 int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
 {
+    auto *condList=reinterpret_cast<IntrusiveList<CondData>*>(cond);
+
     FastInterruptDisableLock dLock;
-    Thread *p=Thread::IRQgetCurrentThread();
-    WaitingList waiting; //Element of a linked list on stack
-    waiting.thread=reinterpret_cast<void*>(p);
-    waiting.next=0; //Putting this thread last on the list (lifo policy)
-    if(cond->first==0)
-    {
-        cond->first=&waiting;
-        cond->last=&waiting;
-    } else {
-        cond->last->next=&waiting;
-        cond->last=&waiting;
-    }
-    p->flags.IRQsetCondWait(true);
+    Thread *t=Thread::IRQgetCurrentThread();
+    CondData listItem(t);
+    condList->push_back(&listItem); //Putting this thread last on the list (lifo policy)
+    t->flags.IRQsetCondWait(true);
 
     unsigned int depth=IRQdoMutexUnlockAllDepthLevels(mutex);
     {
@@ -322,21 +329,29 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
     return 0;
 }
 
+int pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *abstime)
+{
+    return pthreadCondTimedWaitImpl(cond,mutex,timespec2ll(abstime));
+}
+
 int pthread_cond_signal(pthread_cond_t *cond)
 {
+    auto *condList=reinterpret_cast<IntrusiveList<CondData>*>(cond);
+
     #ifdef SCHED_TYPE_EDF
     bool hppw=false;
     #endif //SCHED_TYPE_EDF
     {
         FastInterruptDisableLock dLock;
-        if(cond->first==0) return 0;
+        if(condList->empty()) return 0;
 
-        Thread *t=reinterpret_cast<Thread*>(cond->first->thread);
+        Thread *t=condList->front()->thread;
+        condList->pop_front();
         t->flags.IRQsetCondWait(false);
-        cond->first=cond->first->next;
+        t->flags.IRQsetSleep(false); //Needed due to timedwait
 
         #ifdef SCHED_TYPE_EDF
-        if(t->IRQgetPriority() >Thread::IRQgetCurrentThread()->IRQgetPriority())
+        if(t->IRQgetPriority()>Thread::IRQgetCurrentThread()->IRQgetPriority())
             hppw=true;
         #endif //SCHED_TYPE_EDF
     }
@@ -349,20 +364,23 @@ int pthread_cond_signal(pthread_cond_t *cond)
 
 int pthread_cond_broadcast(pthread_cond_t *cond)
 {
+    auto *condList=reinterpret_cast<IntrusiveList<CondData>*>(cond);
+
     #ifdef SCHED_TYPE_EDF
     bool hppw=false;
     #endif //SCHED_TYPE_EDF
     {
         FastInterruptDisableLock lock;
-        while(cond->first!=0)
+        while(!condList->empty())
         {
-            Thread *t=reinterpret_cast<Thread*>(cond->first->thread);
+            Thread *t=condList->front()->thread;
+            condList->pop_front();
             t->flags.IRQsetCondWait(false);
-            cond->first=cond->first->next;
+            t->flags.IRQsetSleep(false); //Needed due to timedwait
 
             #ifdef SCHED_TYPE_EDF
-            if(t->IRQgetPriority() >
-                    Thread::IRQgetCurrentThread()->IRQgetPriority()) hppw=true;
+            if(t->IRQgetPriority()>Thread::IRQgetCurrentThread()->IRQgetPriority())
+                hppw=true;
             #endif //SCHED_TYPE_EDF
         }
     }
@@ -398,7 +416,11 @@ int pthread_once(pthread_once_t *once, void (*func)())
                     return 0;
             }
         }
+        #ifndef SCHED_TYPE_EDF
         if(again) Thread::yield(); //Yield and let other thread complete
+        #else //SCHED_TYPE_EDF
+        if(again) Thread::sleep(1); //Can't yield with EDF, this may be slow
+        #endif //SCHED_TYPE_EDF
     } while(again);
 
     #ifdef __NO_EXCEPTIONS
@@ -418,3 +440,41 @@ int pthread_once(pthread_once_t *once, void (*func)())
 int pthread_setcancelstate(int state, int *oldstate) { return 0; } //Stub
 
 } //extern "C"
+
+namespace miosix {
+
+int pthreadCondTimedWaitImpl(pthread_cond_t *cond, pthread_mutex_t *mutex, long long absTime)
+{
+    auto *condList=reinterpret_cast<IntrusiveList<CondData>*>(cond);
+
+    //Disallow absolute sleeps with negative or too low values, as the ns2tick()
+    //algorithm in TimeConversion can't handle negative values and may undeflow
+    //even with very low values due to a negative adjustOffsetNs. As an unlikely
+    //side effect, very shor sleeps done very early at boot will be extended.
+    absTime=std::max(absTime,100000LL);
+    FastInterruptDisableLock dLock;
+    Thread *t=Thread::IRQgetCurrentThread();
+    CondData listItem(t);
+    condList->push_back(&listItem); //Putting this thread last on the list (lifo policy)
+    SleepData sleepData(t,absTime);
+    IRQaddToSleepingList(&sleepData); //Putting this thread on the sleeping list too
+    t->flags.IRQsetCondWait(true);
+
+    unsigned int depth=IRQdoMutexUnlockAllDepthLevels(mutex);
+    {
+        FastInterruptEnableLock eLock(dLock);
+        Thread::yield(); //Here the wait becomes effective
+    }
+    //Ensure that the thread is removed from both list, as it can be woken by
+    //either a signal/broadcast (that removes it from condList) or by
+    //IRQwakeThreads (that removes it from sleeping list).
+    bool removed=condList->removeFast(&listItem);
+    IRQremoveFromSleepingList(&sleepData);
+
+    IRQdoMutexLockToDepth(mutex,dLock,depth);
+
+    //If the thread was still in the cond variable list, it was woken up by a timeout
+    return removed ? ETIMEDOUT : 0;
+}
+
+} //namespace miosix

@@ -25,12 +25,11 @@
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
  ***************************************************************************/
 
+#pragma once
+
 #include "config/miosix_settings.h"
 #include "parameters.h"
 #include "kernel/intrusive.h"
-
-#ifndef CONTROL_SCHEDULER_TYPES_H
-#define	CONTROL_SCHEDULER_TYPES_H
 
 #ifdef SCHED_TYPE_CONTROL_BASED
 
@@ -46,23 +45,24 @@ class Thread; //Forward declaration
  * for a hardware irq or etc.), the actual time the thread will have
  * its burst remainder will depend on the real-time priority set for it.
  */
-enum ControlRealtimePriority{
+enum class ControlRealtimePriority : unsigned char
+{
     /**
      * REALTIME_PRIORITY_IMMEDIATE: The processor control is transfered to the thread
      * right in the time it wakes up.
      */
-    REALTIME_PRIORITY_IMMEDIATE = 1,
+    REALTIME_PRIORITY_IMMEDIATE=0,
     /**
      * REALTIME_PRIORITY_NEXT_BURST: The processor control is transfered to the thread
      * right after the current running thread has consumed its burst time.
      */
-    REALTIME_PRIORITY_NEXT_BURST = 2,
+    REALTIME_PRIORITY_NEXT_BURST=1,
     /**
      * REALTIME_PRIORITY_END_OF_ROUND: The processor control is transfered to the 
      * thread in the end of the round and the thread is delayed until all remaining 
      * active threads are run.
      */ 
-    REALTIME_PRIORITY_END_OF_ROUND = 3
+    REALTIME_PRIORITY_END_OF_ROUND=2
 };
 
 /**
@@ -80,22 +80,31 @@ public:
      * Constructor. Not explicit for backward compatibility.
      * \param priority the desired priority value.
      */
-    ControlSchedulerPriority(short int priority): priority(priority), 
-            realtime(REALTIME_PRIORITY_END_OF_ROUND) {}
-    
-    ControlSchedulerPriority(short int priority, short int realtime):
-            priority(priority),realtime(realtime){}
+    ControlSchedulerPriority(short int priority) : priority(priority),
+            realtime(ControlRealtimePriority::REALTIME_PRIORITY_END_OF_ROUND) {}
+
+    /**
+     * Set both priority (proportional to burst length) and realtime priority
+     * (whether immediate preemption is required)
+     */
+    ControlSchedulerPriority(short int priority, ControlRealtimePriority realtime)
+            : priority(priority), realtime(realtime) {}
+
     /**
      * Default constructor.
      */
-    ControlSchedulerPriority(): priority(MAIN_PRIORITY) {}
+    ControlSchedulerPriority() : priority(MAIN_PRIORITY),
+            realtime(ControlRealtimePriority::REALTIME_PRIORITY_END_OF_ROUND) {}
 
     /**
      * \return the priority value
      */
     short int get() const { return priority; }
     
-    short int getRealtime() const {return realtime; }
+    /**
+     * \return the realtime priority
+     */
+    ControlRealtimePriority getRealtime() const { return realtime; }
 
     /**
      * \return true if this objects represents a valid priority.
@@ -104,8 +113,8 @@ public:
      */
     bool validate() const
     {
-        return this->priority>=0 && this->priority<PRIORITY_MAX && 
-                this->realtime >=1 && this->realtime<=3;
+        return priority>=0 && priority<PRIORITY_MAX &&
+               static_cast<unsigned char>(realtime)<3;
     }
     
     /**
@@ -114,44 +123,64 @@ public:
      * for preemption is not exactly the same for priority inheritance, hence,
      * this operation is a branch out of preemption priority for inheritance
      * purpose.
-     * @return 
      */
-    inline bool mutexLessOp(ControlSchedulerPriority b){
-        return false;
+    inline bool mutexLessOp(ControlSchedulerPriority b)
+    {
+        return priority < b.priority;
     }
 
 private:
     short int priority;///< The priority value
-    short int realtime;///< The realtime priority value
+    ControlRealtimePriority realtime;///< The realtime priority value
 };
 
-inline bool operator <(ControlSchedulerPriority a, ControlSchedulerPriority b)
+inline bool operator<(ControlSchedulerPriority a, ControlSchedulerPriority b)
 {
+    #ifdef SCHED_CONTROL_MULTIBURST
     //rule 1) Idle thread should be always preempted by any thread!
     //rule 2) Only REALTIME_PRIORITY_IMMEDIATE threads can preempt other threads
     //right away, for other real-time priorities, the scheduler does not
     //require to be called before the end of the current burst!
-    return a.get()==-1 || (a.getRealtime() != 1 && b.getRealtime() == 1);
+    return a.get()==-1 ||
+        (a.getRealtime()!=ControlRealtimePriority::REALTIME_PRIORITY_IMMEDIATE &&
+         b.getRealtime()==ControlRealtimePriority::REALTIME_PRIORITY_IMMEDIATE);
+    #else
+    return a.get()<b.get();
+    #endif
 }
 
-inline bool operator>(ControlSchedulerPriority a, ControlSchedulerPriority b){
-    return b.get()==-1 || (a.getRealtime() == 1 && b.getRealtime() != 1);
-}
-
-inline bool operator ==(ControlSchedulerPriority a, ControlSchedulerPriority b)
+inline bool operator>(ControlSchedulerPriority a, ControlSchedulerPriority b)
 {
-    return (a.getRealtime() == b.getRealtime()) && (a.get() == b.get());
+    #ifdef SCHED_CONTROL_MULTIBURST
+    return b.get()==-1 ||
+        (a.getRealtime()==ControlRealtimePriority::REALTIME_PRIORITY_IMMEDIATE &&
+         b.getRealtime()!=ControlRealtimePriority::REALTIME_PRIORITY_IMMEDIATE);
+    #else
+    return a.get()>b.get();
+    #endif
 }
 
-inline bool operator !=(ControlSchedulerPriority a, ControlSchedulerPriority b)
+inline bool operator==(ControlSchedulerPriority a, ControlSchedulerPriority b)
 {
-    return (a.getRealtime() != b.getRealtime()) || (a.get()!= b.get());
+    #ifdef SCHED_CONTROL_MULTIBURST
+    return (a.getRealtime()==b.getRealtime()) && (a.get()==b.get());
+    #else
+    return a.get()==b.get();
+    #endif
+}
+
+inline bool operator!=(ControlSchedulerPriority a, ControlSchedulerPriority b)
+{
+    #ifdef SCHED_CONTROL_MULTIBURST
+    return (a.getRealtime()!=b.getRealtime()) || (a.get()!=b.get());
+    #else
+    return a.get()!=b.get();
+    #endif
 }
 
 struct ThreadsListItem : public IntrusiveListItem
 {
-    ThreadsListItem(): t(0) {}
-    Thread *t;
+    Thread *t=nullptr;
 };
 
 /**
@@ -162,8 +191,8 @@ struct ThreadsListItem : public IntrusiveListItem
 class ControlSchedulerData
 {
 public:
-    ControlSchedulerData(): priority(0), bo(bNominal*multFactor), alfa(0),
-            SP_Tp(0), Tp(bNominal), next(0) {}
+    ControlSchedulerData() : bo(bNominal*multFactor), alfa(0),
+            SP_Tp(0), Tp(bNominal), next(nullptr) {}
 
     //Thread priority. Higher priority means longer burst
     ControlSchedulerPriority priority;
@@ -184,5 +213,3 @@ public:
 } //namespace miosix
 
 #endif //SCHED_TYPE_CONTROL_BASED
-
-#endif //CONTROL_SCHEDULER_TYPES_H

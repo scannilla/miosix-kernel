@@ -1442,7 +1442,6 @@ static void test_6()
     //
     // Testing full priority inheritance algorithm
     //
-    #ifndef SCHED_TYPE_CONTROL_BASED
     Thread *t3;
     Thread *t4;
     {
@@ -1508,7 +1507,6 @@ static void test_6()
     t3->join();
     t4->join();
     Thread::sleep(10);
-    #endif
     //
     // Testing recursive mutexes
     //
@@ -2259,6 +2257,12 @@ void t15_p2(void *argv)
     }
 }
 
+void t15_p3(void *argv)
+{
+    Thread::sleep(30);
+    t15_c1.signal();
+}
+
 static void test_15()
 {
     test_name("Condition variables");
@@ -2308,6 +2312,26 @@ static void test_15()
     Thread::sleep(10);
     if(Thread::exists(p1) || Thread::exists(p2))
         fail("Threads not deleted (2)");
+
+    //testing timedWait
+    long long b,a=getTime()+10000000; //10ms
+    {
+        Lock<Mutex> l(t15_m1);
+        if(t15_c1.timedWait(l,a)!=TimedWaitResult::Timeout) fail("timedwait (1)");
+        b=getTime();
+    }
+    //iprintf("delta=%lld\n",b-a);
+    if(llabs(b-a)>200000) fail("timedwait (2)");
+    Thread::create(t15_p3,STACK_SMALL,0);
+    a=getTime()+100000000; //100ms
+    {
+        Lock<Mutex> l(t15_m1);
+        if(t15_c1.timedWait(l,a)!=TimedWaitResult::NoTimeout) fail("timedwait (1)");
+        b=getTime();
+    }
+    //iprintf("delta=%lld\n",b-a);
+    if(llabs(b-a+70000000)>500000) fail("timedwait (4)");
+    Thread::sleep(10);
     pass();
 }
 
@@ -2344,6 +2368,25 @@ posix threads API
 inline Thread *toThread(pthread_t t)
 {
     return reinterpret_cast<Thread*>(t);
+}
+
+static constexpr int nsPerSec = 1000000000;
+
+inline long long timespec2ll(const struct timespec *tp)
+{
+    return static_cast<long long>(tp->tv_sec) * nsPerSec + tp->tv_nsec;
+}
+
+void timespecAdd(struct timespec *t, long long ns)
+{
+    long long x=timespec2ll(t)+ns;
+    t->tv_sec = x / nsPerSec;
+    t->tv_nsec = static_cast<long>(x % nsPerSec);
+}
+
+long long timespecDelta(struct timespec *a, struct timespec *b)
+{
+    return timespec2ll(a)-timespec2ll(b);
 }
 
 void *t16_p1(void *argv)
@@ -2394,17 +2437,17 @@ void *t16_p4(void *argv)
     return NULL;
 }
 
-int a=0;
+int t16_v2=0;
 
 void t16_f1()
 {
-    a++;
+    t16_v2++;
 }
 
 void t16_f2()
 {
     Thread::sleep(200);
-    a++;
+    t16_v2++;
 }
 
 pthread_once_t t16_o1=PTHREAD_ONCE_INIT;
@@ -2578,6 +2621,29 @@ static void test_16()
     pthread_join(thread,NULL);
     Thread::sleep(10);
     if(pthread_cond_destroy(&t16_c2)!=0) fail("cond destroy");
+    //testing pthread_cond_timedwait
+    timespec a,b;
+    clock_gettime(CLOCK_MONOTONIC,&a);
+    timespecAdd(&a,10000000); //10ms
+    if(pthread_mutex_lock(&t16_m1)!=0) fail("mutex lock (7)"); //<---
+    if(pthread_cond_timedwait(&t16_c1,&t16_m1,&a)!=ETIMEDOUT) fail("timedwait (1)");
+    clock_gettime(CLOCK_MONOTONIC,&b);
+    if(pthread_mutex_unlock(&t16_m1)!=0) fail("mutex unlock (7)"); //<---
+    //iprintf("delta=%lld\n",timespecDelta(&b,&a));
+    if(llabs(timespecDelta(&b,&a))>200000) fail("timedwait (2)");
+    if(pthread_create(&thread,NULL,t16_p3,NULL)!=0) fail("pthread_create (10)");
+    clock_gettime(CLOCK_MONOTONIC,&a);
+    timespecAdd(&a,100000000); //100ms
+    if(pthread_mutex_lock(&t16_m1)!=0) fail("mutex lock (8)"); //<---
+    t16_v1=false;
+    if(pthread_cond_timedwait(&t16_c1,&t16_m1,&a)!=0) fail("timedwait (3)");
+    clock_gettime(CLOCK_MONOTONIC,&b);
+    if(t16_v1==false) fail("did not really wait");
+    if(pthread_mutex_unlock(&t16_m1)!=0) fail("mutex unlock (8)"); //<---
+    //iprintf("delta=%lld\n",timespecDelta(&b,&a));
+    if(llabs(timespecDelta(&b,&a)+70000000)>500000) fail("timedwait (4)");
+    pthread_join(thread,NULL);
+    Thread::sleep(10);
     //
     // Testing pthread_once
     //
@@ -2585,17 +2651,17 @@ static void test_16()
     //pthread_once, it wouldn't be possible to run the test more than once ;)
     if(t16_o1.init_executed) t16_o1.init_executed=0;
     if(t16_o2.init_executed) t16_o2.init_executed=0;
-    a=0;
+    t16_v2=0;
     if(pthread_once(&t16_o1,t16_f1)!=0) fail("pthread_once 1");
-    if(a!=1) fail("pthread_once 2");
+    if(t16_v2!=1) fail("pthread_once 2");
     if(pthread_once(&t16_o1,t16_f1)!=0) fail("pthread_once 2");
-    if(a!=1) fail("pthread_once 3");
+    if(t16_v2!=1) fail("pthread_once 3");
     if(sizeof(pthread_once_t)!=2) fail("pthread_once 4");
-    a=0;
+    t16_v2=0;
     Thread::create(t16_p5,STACK_MIN);
     Thread::sleep(50);
     if(pthread_once(&t16_o2,t16_f2)!=0) fail("pthread_once 5");
-    if(a!=1) fail("pthread_once does not wait");
+    if(t16_v2!=1) fail("pthread_once does not wait");
     pass();
 }
 
@@ -3210,6 +3276,7 @@ These are not actually in the kernel but in the patches to gcc
 also tests atomic operations provided by miosix (interfaces/atomic_ops.h)
 */
 
+const int t22_iterations=100000;
 static int t22_v1;
 static int t22_v2;
 static int t22_v3;
@@ -3229,21 +3296,28 @@ static void t22_t2(void *argv)
     while(Thread::testTerminate()==false)
     {
         t22_v5=true;
+        #ifndef SCHED_TYPE_EDF
         Thread::yield();
+        #else //SCHED_TYPE_EDF
+        Thread::sleep(1);
+        #endif //SCHED_TYPE_EDF
     }
 }
 
 static void *t22_t1(void*)
 {
-	for(int i=0;i<100000;i++)
-	{
-		__gnu_cxx::__atomic_add(&t22_v1,1);
-		__gnu_cxx::__exchange_and_add(&t22_v2,-1);
+    for(int i=0;i<t22_iterations;i++)
+    {
+        __gnu_cxx::__atomic_add(&t22_v1,1);
+        __gnu_cxx::__exchange_and_add(&t22_v2,-1);
         atomicAdd(&t22_v3,1);
         atomicAddExchange(&t22_v4,1);
         t22_v6++;
-	}
-	return 0;
+        #ifdef SCHED_TYPE_EDF
+        if((i % (t22_iterations/10))==0) Thread::sleep(1);
+        #endif //SCHED_TYPE_EDF
+    }
+    return 0;
 }
 
 int t22_v8;
@@ -3264,7 +3338,13 @@ shared_ptr<t22_c1> t22_v7;
 void t22_t3(void*)
 {
     auto inst1=make_shared<t22_c1>();
-    for(int i=0;i<100000;i++) atomic_store(&t22_v7,inst1);
+    for(int i=0;i<t22_iterations;i++)
+    {
+        atomic_store(&t22_v7,inst1);
+        #ifdef SCHED_TYPE_EDF
+        if((i % (t22_iterations/10))==0) Thread::sleep(1);
+        #endif //SCHED_TYPE_EDF
+    }
     atomic_store(&t22_v7,shared_ptr<t22_c1>(nullptr));
     inst1->canDelete=true;
 }
@@ -3277,13 +3357,16 @@ static void test_22()
     t22_v1=t22_v2=t22_v3=t22_v4=0;
     pthread_t t;
     pthread_create(&t,0,t22_t1,0);
-    for(int i=0;i<100000;i++)
+    for(int i=0;i<t22_iterations;i++)
     {
         __gnu_cxx::__atomic_add(&t22_v1,-1);
         __gnu_cxx::__exchange_and_add(&t22_v2,1);
         atomicAdd(&t22_v3,-1);
         atomicAddExchange(&t22_v4,-1);
         t22_v6--;
+        #ifdef SCHED_TYPE_EDF
+        if((i % (t22_iterations/10))==0) Thread::sleep(1);
+        #endif //SCHED_TYPE_EDF
     }
     pthread_join(t,0);
     if(t22_v1!=0 || t22_v2!=0 || t22_v3!=0 || t22_v4!=0)
@@ -3308,7 +3391,7 @@ static void test_22()
     if(x!=10) fail("atomicCompareAndSwap 2");
     if(atomicCompareAndSwap(&x,10,13)!=10) fail("atomicCompareAndSwap 3");
     if(x!=13) fail("atomicCompareAndSwap 4");
-    
+
     t22_s1 data;
     t22_s1 *dataPtr=&data;
     void * const volatile *ptr=
@@ -3329,7 +3412,7 @@ static void test_22()
     {
         FastInterruptDisableLock dLock;
         t22_v5=false;
-        
+
         int x=10;
         if(atomicSwap(&x,20)!=10) error=true;
         if(x!=20) error=true;
@@ -3358,12 +3441,12 @@ static void test_22()
         if(data.a!=2) error=true;
         if(atomicFetchAndIncrement(ptr,1,-2)!=dataPtr) error=true;
         if(data.b!=8) error=true;
-        
+
         delayUs(MAX_TIME_IRQ_DISABLED); //Wait to check interrupts are disabled
         if(t22_v5) error=true;
     }
     if(error) fail("Interrupt test not passed");
-    
+
     t2->terminate();
     t2->join();
     
@@ -3371,7 +3454,13 @@ static void test_22()
     {
         Thread *t3=Thread::create(t22_t3,STACK_SMALL,0,0,Thread::JOINABLE);
         auto inst2=make_shared<t22_c1>();
-        for(int i=0;i<100000;i++) atomic_store(&t22_v7,inst2);
+        for(int i=0;i<t22_iterations;i++)
+        {
+            atomic_store(&t22_v7,inst2);
+            #ifdef SCHED_TYPE_EDF
+            if((i % (t22_iterations/10))==0) Thread::sleep(1);
+            #endif //SCHED_TYPE_EDF
+        }
         atomic_store(&t22_v7,shared_ptr<t22_c1>(nullptr));
         // NOTE: we can't check use_count to be 1 because the C++ specs say it
         // can provide inaccurate results, and it does. Apparently atomic_store
@@ -3863,7 +3952,7 @@ static void test_25()
      * C++11 threads run with MAIN_PRIORITY, so to avoid deadlocks or other
      * artifacts, we restore main't priority to the default, and set it back
      * to 0 at the end of this test, as the rest of the testsuite runs with
-     lowest priority
+     * lowest priority
      */
     Thread::setPriority(MAIN_PRIORITY);
     test_name("C++11 threads");
@@ -3995,6 +4084,7 @@ static void test_25()
     //
     // Testing yield
     //
+    #ifndef SCHED_TYPE_EDF
     {
         volatile bool enable=false;
         volatile bool flag=false;
@@ -4005,6 +4095,7 @@ static void test_25()
         if(flag==false) fail("this_thread::yield");
         thr.join();
     }
+    #endif //SCHED_TYPE_EDF
     //
     // Testing system_clock/this_thread::sleep_for
     //
@@ -4022,6 +4113,36 @@ static void test_25()
         this_thread::sleep_until(chrono::steady_clock::now()+chrono::milliseconds(100));
         auto b=chrono::steady_clock::now().time_since_epoch().count();
         if(llabs(b-a-100000000)>5000000) fail("sleep_until");
+    }
+    //
+    // Testing condition_variable timed wait
+    //
+    {
+        unique_lock<mutex> l(t25_m1);
+        auto a=chrono::steady_clock::now().time_since_epoch().count();
+        if(t25_c1.wait_for(l,10ms)!=cv_status::timeout) fail("timedwait (1)");
+        auto b=chrono::steady_clock::now().time_since_epoch().count();
+        //iprintf("delta=%lld\n",b-a-10000000);
+        if(llabs(b-a-10000000)>200000) fail("timedwait (2)");
+    }
+    {
+        unique_lock<mutex> l(t25_m1);
+        auto start=chrono::steady_clock::now();
+        auto a=start.time_since_epoch().count();
+        if(t25_c1.wait_until(l,start+10ms)!=cv_status::timeout) fail("timedwait (3)");
+        auto b=chrono::steady_clock::now().time_since_epoch().count();
+        //iprintf("delta=%lld\n",b-a-10000000);
+        if(llabs(b-a-10000000)>200000) fail("timedwait (4)");
+    }
+    {
+        thread t([]{ this_thread::sleep_for(30ms); t25_c1.notify_one(); });
+        auto a=chrono::steady_clock::now().time_since_epoch().count();
+        unique_lock<mutex> l(t25_m1);
+        if(t25_c1.wait_for(l,100ms)!=cv_status::no_timeout) fail("timedwait (5)");
+        auto b=chrono::steady_clock::now().time_since_epoch().count();
+        //iprintf("delta=%lld\n",b-a-30000000);
+        if(llabs(b-a-30000000)>500000) fail("timedwait (6)");
+        t.join();
     }
     pass();
     Thread::setPriority(0);

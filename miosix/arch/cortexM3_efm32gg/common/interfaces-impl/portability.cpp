@@ -24,14 +24,12 @@
  *   You should have received a copy of the GNU General Public License     *
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
  ***************************************************************************/ 
- //Miosix kernel
 
 #include "interfaces/portability.h"
 #include "kernel/kernel.h"
 #include "kernel/error.h"
 #include "interfaces/bsp.h"
 #include "kernel/scheduler/scheduler.h"
-#include "kernel/scheduler/timer_interrupt.h"
 #include <algorithm>
 
 /**
@@ -45,29 +43,10 @@ void SVC_Handler() __attribute__((naked));
 void SVC_Handler()
 {
     saveContext();
-	//Call ISR_yield(). Name is a C++ mangled name.
+    //Call ISR_yield(). Name is a C++ mangled name.
     asm volatile("bl _ZN14miosix_private9ISR_yieldEv");
     restoreContext();
 }
-
-#ifdef SCHED_TYPE_CONTROL_BASED
-/**
- * \internal
- * Auxiliary timer interupt routine.
- * Used for variable lenght bursts in control based scheduler.
- * Since inside naked functions only assembler code is allowed, this function
- * only calls the ctxsave/ctxrestore macros (which are in assembler), and calls
- * the implementation code in ISR_yield()
- */
-void XXX_IRQHandler() __attribute__((naked));
-void XXX_IRQHandler()
-{
-    saveContext();
-    //Call ISR_auxTimer(). Name is a C++ mangled name.
-    asm volatile("bl _ZN14miosix_private12ISR_auxTimerEv");
-    restoreContext();
-}
-#endif //SCHED_TYPE_CONTROL_BASED
 
 namespace miosix_private {
 
@@ -81,36 +60,8 @@ namespace miosix_private {
 void ISR_yield() __attribute__((noinline));
 void ISR_yield()
 {
-    IRQstackOverflowCheck();
+    miosix::Thread::IRQstackOverflowCheck();
     miosix::Scheduler::IRQfindNextThread();
-}
-
-#ifdef SCHED_TYPE_CONTROL_BASED
-/**
- * \internal
- * Auxiliary timer interupt routine.
- * Used for variable lenght bursts in control based scheduler.
- */
-void ISR_auxTimer() __attribute__((noinline));
-void ISR_auxTimer()
-{
-    IRQstackOverflowCheck();
-    miosix::Scheduler::IRQfindNextThread();//If the kernel is running, preempt
-    if(miosix::kernel_running!=0) miosix::tick_skew=true;
-}
-#endif //SCHED_TYPE_CONTROL_BASED
-
-void IRQstackOverflowCheck()
-{
-    const unsigned int watermarkSize=miosix::WATERMARK_LEN/sizeof(unsigned int);
-    for(unsigned int i=0;i<watermarkSize;i++)
-    {
-        if(miosix::cur->watermark[i]!=miosix::WATERMARK_FILL)
-            miosix::errorHandler(miosix::STACK_OVERFLOW);
-    }
-    if(miosix::cur->ctxsave[0] < reinterpret_cast<unsigned int>(
-            miosix::cur->watermark+watermarkSize))
-        miosix::errorHandler(miosix::STACK_OVERFLOW);
 }
 
 void IRQsystemReboot()
@@ -171,10 +122,6 @@ void IRQportableStartKernel()
     SCB->CCR |= SCB_CCR_DIV_0_TRP_Msk;
     NVIC_SetPriorityGrouping(7);//This should disable interrupt nesting
     NVIC_SetPriority(SVCall_IRQn,3);//High priority for SVC (Max=0, min=15)
-
-    #ifdef SCHED_TYPE_CONTROL_BASED
-    AuxiliaryTimer::IRQinit();
-    #endif //SCHED_TYPE_CONTROL_BASED
     
     //create a temporary space to save current registers. This data is useless
     //since there's no way to stop the sheduler, but we need to save it anyway.
@@ -192,23 +139,5 @@ void sleepCpu()
 {
     __WFI();
 }
-
-#ifdef SCHED_TYPE_CONTROL_BASED
-#error "AUX_TIMER not yet implemented"
-void AuxiliaryTimer::IRQinit()
-{
-
-}
-
-int AuxiliaryTimer::IRQgetValue()
-{
-    
-}
-
-void AuxiliaryTimer::IRQsetValue(int x)
-{
-    
-}
-#endif //SCHED_TYPE_CONTROL_BASED
 
 } //namespace miosix_private

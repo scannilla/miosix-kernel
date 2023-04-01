@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2013 by Terraneo Federico                               *
+ *   Copyright (C) 2013-2023 by Terraneo Federico                          *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -25,17 +25,19 @@
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
  ***************************************************************************/
 
-#ifndef INTRUSIVE_H
-#define INTRUSIVE_H
+#pragma once
 
 #include <ostream>
 #include <cstddef>
 #include <cassert>
-#include "interfaces/atomic_ops.h"
-
-#if __cplusplus > 199711L
 #include <type_traits>
-#endif // c++11
+#ifndef TEST_ALGORITHM
+#include "interfaces/atomic_ops.h"
+#include "error.h"
+#endif //TEST_ALGORITHM
+
+//Only enable when testing code that uses IntrusiveList
+//#define INTRUSIVE_LIST_ERROR_CHECK
 
 namespace miosix {
 
@@ -634,8 +636,10 @@ intrusive_ref_ptr<T> atomic_exchange(intrusive_ref_ptr<T> *p,
     return p->atomic_exchange(r);
 }
 
+//Forward declarations
+class IntrusiveListBase;
 template<typename T>
-class IntrusiveList; //Forward declaration
+class IntrusiveList;
 
 /**
  * Base class from which all items to be put in an IntrusiveList must derive,
@@ -646,8 +650,47 @@ class IntrusiveListItem
 private:
     IntrusiveListItem *next=nullptr;
     IntrusiveListItem *prev=nullptr;
+
+    friend class IntrusiveListBase;
     template<typename T>
     friend class IntrusiveList;
+};
+
+/**
+ * \internal
+ * Base class of IntrusiveList with the non-template-dependent part to improve
+ * code size when instantiationg multiple IntrusiveLists
+ */
+class IntrusiveListBase
+{
+protected:
+    IntrusiveListBase() : head(nullptr), tail(nullptr) {}
+
+    void push_back(IntrusiveListItem *item);
+
+    void pop_back();
+
+    void push_front(IntrusiveListItem *item);
+
+    void pop_front();
+
+    void insert(IntrusiveListItem *cur, IntrusiveListItem *item);
+
+    IntrusiveListItem *erase(IntrusiveListItem *cur);
+
+    IntrusiveListItem* front() { return head; }
+
+    IntrusiveListItem* back() { return tail; }
+
+    bool empty() const { return head==nullptr; }
+
+    #ifdef INTRUSIVE_LIST_ERROR_CHECK
+    static void fail();
+    #endif //INTRUSIVE_LIST_ERROR_CHECK
+
+private:
+    IntrusiveListItem *head;
+    IntrusiveListItem *tail;
 };
 
 /**
@@ -656,183 +699,190 @@ private:
  * 
  * Compared to std::list, this class offers the guarantee that no dynamic memory
  * allocation is performed. Differently from std::list, objects are not copied
- * when put in the list, so this is a non-owning container. The caller is
- * responsible for managing the lifetime of objects put in this list.
+ * when put in the list, so this is a non-owning container. For this reason,
+ * this class unlike std::list accepts objects by pointer instead of reference
+ * in member functions like insert() or push_front(), and returns objects by
+ * pointer when dereferncing iterators or in member functions like front().
+ * The caller is thus responsible for managing the lifetime of objects put in
+ * this list.
  */
 template<typename T>
-class IntrusiveList
+class IntrusiveList : private IntrusiveListBase
 {
 public:
+    /**
+     * Intrusive list iterator type
+     */
     class iterator
     {
-    private:
-        template<typename>
-        friend class IntrusiveList;
-
-        T *cur;
-        iterator(T *cur) : cur(cur) {}
     public:
-        iterator operator++() { cur = static_cast<T*>(cur->next); return *this; }
-        iterator operator--() { cur = static_cast<T*>(cur->prev); return *this; }
+        iterator() : list(nullptr), cur(nullptr) {}
+
+        T* operator*()
+        {
+            #ifdef INTRUSIVE_LIST_ERROR_CHECK
+            if(list==nullptr || cur==nullptr) IntrusiveListBase::fail();
+            #endif //INTRUSIVE_LIST_ERROR_CHECK
+            return static_cast<T*>(cur);
+        }
+
+        iterator operator++()
+        {
+            #ifdef INTRUSIVE_LIST_ERROR_CHECK
+            if(list==nullptr || cur==nullptr) IntrusiveListBase::fail();
+            #endif //INTRUSIVE_LIST_ERROR_CHECK
+            cur=cur->next; return *this;
+        }
+
+        iterator operator--()
+        {
+            #ifdef INTRUSIVE_LIST_ERROR_CHECK
+            if(list==nullptr || list->empty()) IntrusiveListBase::fail();
+            #endif //INTRUSIVE_LIST_ERROR_CHECK
+            if(cur!=nullptr) cur=cur->prev;
+            else cur=list->IntrusiveListBase::back(); //Special case: decrementing end()
+            return *this;
+        }
+
         iterator operator++(int)
         {
+            #ifdef INTRUSIVE_LIST_ERROR_CHECK
+            if(list==nullptr || cur==nullptr) IntrusiveListBase::fail();
+            #endif //INTRUSIVE_LIST_ERROR_CHECK
             iterator result=*this;
-            cur = static_cast<T*>(cur->next);
+            cur=cur->next;
             return result;
         }
+
         iterator operator--(int)
         {
+            #ifdef INTRUSIVE_LIST_ERROR_CHECK
+            if(list==nullptr || list->empty()) IntrusiveListBase::fail();
+            #endif //INTRUSIVE_LIST_ERROR_CHECK
             iterator result=*this;
-            cur = static_cast<T*>(cur->prev);
+            if(cur!=nullptr) cur=cur->prev;
+            else cur=list->IntrusiveListBase::back(); //Special case: decrementing end()
             return result;
         }
-        T* operator*() { return cur; }
+
         bool operator==(const iterator& rhs) { return cur==rhs.cur; }
         bool operator!=(const iterator& rhs) { return cur!=rhs.cur; }
+
+    private:
+        iterator(IntrusiveList<T> *list, IntrusiveListItem *cur)
+            : list(list), cur(cur) {}
+
+        IntrusiveList<T> *list;
+        IntrusiveListItem *cur;
+
+        friend class IntrusiveList<T>;
     };
     
-    IntrusiveList(): head(nullptr), tail(nullptr) {}
-    
-    void push_back(T *item)
-    {
-        item->next = nullptr;
-        item->prev = tail;
-        if(tail != nullptr)
-        {
-            item->prev->next = item;
-        } else {
-            head = item;
-        }
-        tail = item;
-    }
+    /**
+     * Constructor, produces an empty list
+     */
+    IntrusiveList() {}
+
+    /**
+     * Disabled copy constructor and operator=
+     * Since intrusive lists do not store objects by value, and an item can
+     * only belong to at most one list, intrusive lists are not copyable.
+     */
+    IntrusiveList(const IntrusiveList&)=delete;
+    IntrusiveList& operator=(const IntrusiveList&)=delete;
     
     /**
-     * Removes the last element in the list.
+     * Adds item to the end of the list
+     * \param item item to add
      */
-    void pop_back()
-    {
-        if(tail == nullptr) return;
-        T *removedItem = tail;
-        tail = static_cast<T*>(removedItem->prev);
-        if(tail == nullptr)
-        {
-            head = nullptr;
-        } else {
-            tail->next = nullptr;
-            removedItem->next = nullptr;
-        }
-    }
-    
-    void push_front(T *item)
-    {
-        item->next = head;
-        item->prev = nullptr;
-        if(head != nullptr)
-        {
-            item->next->prev = item;
-        } else {
-            tail = item;
-        }
-        head = item;
-    }
+    void push_back(T *item) { IntrusiveListBase::push_back(item); }
     
     /**
-     * Removes the first item (head) of the list.
+     * Removes the last element in the list
      */
-    void pop_front()
-    {
-        if(head == nullptr) return;
-        T *removedItem = head;
-        head = static_cast<T*>(removedItem->next);
-        if(head == nullptr)
-        {
-            tail = nullptr;
-        } else {
-            head->prev = nullptr;
-            removedItem->next = nullptr;
-        }
-    }
+    void pop_back() { IntrusiveListBase::pop_back(); }
+    
+    /**
+     * Adds item to the front of the list
+     * \param item item to add
+     */
+    void push_front(T *item) { IntrusiveListBase::push_front(item); }
+    
+    /**
+     * Removes the first item of the list
+     */
+    void pop_front() { IntrusiveListBase::pop_front(); }
     
     /**
      * Inserts the given item before the position indicated by the iterator
+     * \param it position where to insert the item
+     * \param item item to insert
      */
-    void insert(iterator position, T *item)
+    void insert(iterator it, T *item)
     {
-        item->next = *position;
-        if(item->next != nullptr)
-        {
-            item->prev = item->next->prev;
-            item->next->prev = item;
-        } else {
-            item->prev = tail;
-            tail = item;
-        }
-        if(item->prev != nullptr)
-        {
-            item->prev->next = item;
-        } else {
-            head = item;
-        }
+        #ifdef INTRUSIVE_LIST_ERROR_CHECK
+        if(it.list!=this) fail();
+        #endif //INTRUSIVE_LIST_ERROR_CHECK
+        IntrusiveListItem *cur=it.cur; //Safe even if it==end() -> cur=nullptr
+        IntrusiveListBase::insert(cur,item);
     }
     
     /**
-     * Removes the specified item from the list.
-     * @param an iterator to the next item
+     * Removes the specified item from the list
+     * \param it iterator to the item to remove
+     * \return an iterator to the next item
      */
-    iterator erase(iterator position)
+    iterator erase(iterator it)
     {
-        //Bail out if we are at the end of the list
-        if(*position == nullptr) return position;
-        if((*position)->prev != nullptr)
-        {
-            (*position)->prev->next = (*position)->next;
-            (*position)->prev = nullptr;
-        } else {
-            //Bail out if the item is not in the list
-            if(head != *position) return position;
-            head = static_cast<T*>((*position)->next);
-        }
-        iterator result = iterator(static_cast<T*>((*position)->next));
-        if((*position)->next != nullptr)
-        {
-            (*position)->next->prev = (*position)->prev;
-            (*position)->next = nullptr;
-        } else {
-            tail = static_cast<T*>((*position)->prev);
-        }
-        return result;
-    }
-    
-    iterator begin()
-    {
-        return iterator(head);
-    }
-    
-    iterator end()
-    {
-        return iterator(nullptr);
-    }
-    
-    T* front()
-    {
-        return head;
-    }
-    
-    T* back()
-    {
-        return tail;
-    }
-    
-    bool empty() const
-    {
-        return head==nullptr;
+        #ifdef INTRUSIVE_LIST_ERROR_CHECK
+        if(it.list!=this) fail();
+        #endif //INTRUSIVE_LIST_ERROR_CHECK
+        IntrusiveListItem *cur=it.cur;
+        return iterator(this,IntrusiveListBase::erase(cur));
     }
 
-private:
-    T *head;
-    T *tail;
+    /**
+     * Nonportable version of std::list::remove that is O(1) since it relies on
+     * the list being intrusive
+     * NOTE: can ONLY be called if you are sure the item to remove is either not
+     * in any list (in this case, nothing is done) or is in the list it is being
+     * removed from. Trying to remove an item that is present in another list
+     * produces undefined bahavior.
+     * \param item item to remove, must not be nullptr
+     * \return true if the item was removed, false if the item was not present
+     * in the list
+     */
+    bool removeFast(T *item)
+    {
+        if(item->prev==nullptr && IntrusiveListBase::front()!=item) return false;
+        IntrusiveListBase::erase(item);
+        return true;
+    }
+    
+    /**
+     * \return an iterator to the first item
+     */
+    iterator begin() { return iterator(this,IntrusiveListBase::front()); }
+    
+    /**
+     * \return an iterator to the last item
+     */
+    iterator end() { return iterator(this,nullptr); }
+    
+    /**
+     * \return a pointer to the first item. List must not be empty
+     */
+    T* front() { return static_cast<T*>(IntrusiveListBase::front()); }
+    
+    /**
+     * \return a pointer to the last item. List must not be empty
+     */
+    T* back() { return static_cast<T*>(IntrusiveListBase::back()); }
+    
+    /**
+     * \return true if the list is empty
+     */
+    bool empty() const { return IntrusiveListBase::empty(); }
 };
 
 } //namespace miosix
-
-#endif //INTRUSIVE_H

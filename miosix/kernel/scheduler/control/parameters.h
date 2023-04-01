@@ -25,8 +25,7 @@
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
  ***************************************************************************/
 
-#ifndef PARAMETERS_H
-#define	PARAMETERS_H
+#pragma once
 
 namespace miosix {
 
@@ -45,6 +44,10 @@ namespace miosix {
 ///Essentially, every time the regulator set point changes, the state of the
 ///integral regulators is reset to its default value.
 #define ENABLE_REGULATOR_REINIT
+
+///Enables support for Real-time priorities in the control scheduler, that
+///are otherwise ignored.
+//#define SCHED_CONTROL_MULTIBURST
 
 ///Run the scheduler using fixed point math only. Faster but less precise.
 ///Note that the inner integral regulators are always fixed point, this affects
@@ -85,11 +88,4 @@ static const int bMin=static_cast<int>(200000);// 200us
 ///maximum burst time (to avoid losing responsiveness/timer overflow)
 static const int bMax=static_cast<int>(20000000);// 20ms
 
-///idle thread has a fixed burst length that can be modified here
-///it is recomended to leave it to a high value, but that does not cause
-///overflow of the auxiliary timer
-static const int bIdle=static_cast<int>(500000000);// 500ms
-
 }
-
-#endif //PARAMETERS_H

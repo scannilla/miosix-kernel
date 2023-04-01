@@ -25,8 +25,7 @@
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
  ***************************************************************************/
 
-#ifndef EDF_SCHEDULER_H
-#define	EDF_SCHEDULER_H
+#pragma once
 
 #include "config/miosix_settings.h"
 #include "edf_scheduler_types.h"
@@ -133,15 +132,17 @@ public:
      * If the kernel is paused does nothing.
      * It's behaviour is to modify the global variable miosix::cur which always
      * points to the currently running thread.
-     * 
-     * \return 1 if any active threads found and 0 otherwise
      */
-    static unsigned int IRQfindNextThread();
+    static void IRQfindNextThread();
 
+    /**
+     * \internal
+     * \return the next scheduled preemption set by the scheduler
+     * In case no preemption is set returns numeric_limits<long long>::max()
+     */
     static long long IRQgetNextPreemption();
     
 private:
-
     /**
      * Add a thread to the list of threads, keeping the list ordered by deadline
      * \param thread thread to add
@@ -160,5 +161,3 @@ private:
 } //namespace miosix
 
 #endif //SCHED_TYPE_EDF
-
-#endif //EDF_SCHEDULER_H
