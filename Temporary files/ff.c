@@ -3800,7 +3800,7 @@ FRESULT f_open (
 
 	/* Get logical drive number */
 	mode &= FF_FS_READONLY ? FA_READ : FA_READ | FA_WRITE | FA_CREATE_ALWAYS | FA_CREATE_NEW | FA_OPEN_ALWAYS | FA_OPEN_APPEND;
-	res = mount_volume(/*&path,*/ &fs, mode); // SC: TODO -> check the declaration of this function, fdf has modified it
+	res = mount_volume(/*&path,*/ fs, mode); // SC: TODO -> check the declaration of this function, fdf has modified it
 	if (res == FR_OK) {
 		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
@@ -4345,7 +4345,7 @@ FRESULT f_chdir (
 
 
 	/* Get logical drive */
-	res = mount_volume(&path, &fs, 0);
+	res = mount_volume(/*&path,*/ fs, 0);
 	if (res == FR_OK) {
 		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
@@ -4416,7 +4416,7 @@ FRESULT f_getcwd (
 
 	/* Get logical drive */
 	buff[0] = 0;	/* Set null string to get current volume */
-	res = mount_volume((const TCHAR**)&buff, &fs, 0);	/* Get current volume */
+	res = mount_volume(/*(const TCHAR**)&buff,*/ fs, 0);	/* Get current volume */
 	if (res == FR_OK) {
 		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
@@ -4673,7 +4673,7 @@ FRESULT f_opendir (
 	if (!dp) return FR_INVALID_OBJECT;
 
 	/* Get logical drive */
-	res = mount_volume(/*&path,*/ &fs, 0);
+	res = mount_volume(/*&path,*/ fs, 0);
 	if (res == FR_OK) {
 		dp->obj.fs = fs;
 		INIT_NAMBUF(fs);
@@ -4818,6 +4818,7 @@ FRESULT f_findnext (
 /*-----------------------------------------------------------------------*/
 
 FRESULT f_findfirst (
+	FATFS *fs,
 	DIR_* dp,				/* Pointer to the blank directory object */
 	FILINFO* fno,			/* Pointer to the file information structure */
 	const /*TCHAR*/char *path,		/* Pointer to the directory to open */
@@ -4828,7 +4829,7 @@ FRESULT f_findfirst (
 
 
 	dp->pat = pattern;		/* Save pointer to pattern string */
-	res = f_opendir(dp, path);		/* Open the target directory */
+	res = f_opendir(fs, dp, path);		/* Open the target directory */
 	if (res == FR_OK) {
 		res = f_findnext(dp, fno);	/* Find the first item */
 	}
@@ -4856,7 +4857,7 @@ FRESULT f_stat (
 
 
 	/* Get logical drive */
-	res = mount_volume(/*&path,*/ &dj.obj.fs, 0);
+	res = mount_volume(/*&path,*/ dj.obj.fs, 0);
 	if (res == FR_OK) {
 		INIT_NAMBUF(dj.obj.fs);
 		res = follow_path(&dj, path);	/* Follow the file path */
@@ -5042,7 +5043,7 @@ FRESULT f_unlink (
 
 
 	/* Get logical drive */
-	res = mount_volume(/*&path,*/ &fs, FA_WRITE);
+	res = mount_volume(/*&path,*/ fs, FA_WRITE);
 	if (res == FR_OK) {
 		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
@@ -5133,7 +5134,7 @@ FRESULT f_mkdir (
 	DEF_NAMBUF
 
 
-	res = mount_volume(/*&path,*/ &fs, FA_WRITE);	/* Get logical drive */
+	res = mount_volume(/*&path,*/ fs, FA_WRITE);	/* Get logical drive */
 	if (res == FR_OK) {
 		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
@@ -5217,7 +5218,7 @@ FRESULT f_rename (
 
 
 	get_ldnumber(&path_new);						/* Snip the drive number of new name off */
-	res = mount_volume(/*&path_old,*/ &fs, FA_WRITE);	/* Get logical drive of the old object */
+	res = mount_volume(/*&path_old,*/ fs, FA_WRITE);	/* Get logical drive of the old object */
 	if (res == FR_OK) {
 		djo.obj.fs = fs;
 		INIT_NAMBUF(fs);
@@ -5325,7 +5326,7 @@ FRESULT f_chmod (
 	DEF_NAMBUF
 
 
-	res = mount_volume(/*&path,*/ &fs, FA_WRITE);	/* Get logical drive */
+	res = mount_volume(/*&path,*/ fs, FA_WRITE);	/* Get logical drive */
 	if (res == FR_OK) {
 		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
@@ -5371,7 +5372,7 @@ FRESULT f_utime (
 	DEF_NAMBUF
 
 
-	res = mount_volume(/*&path,*/ &fs, FA_WRITE);	/* Get logical drive */
+	res = mount_volume(/*&path,*/ fs, FA_WRITE);	/* Get logical drive */
 	if (res == FR_OK) {
 		dj.obj.fs = fs;
 		INIT_NAMBUF(fs);
@@ -5420,7 +5421,7 @@ FRESULT f_getlabel (
 	WCHAR wc;
 
 	/* Get logical drive */
-	res = mount_volume(&path, &fs, 0);
+	res = mount_volume(/*&path,*/ fs, 0); // SC: Terraneo does not modified the function in this way. This function seems unused
 
 	/* Get volume label */
 	if (res == FR_OK && label) {
@@ -5524,7 +5525,7 @@ FRESULT f_setlabel (
 #endif
 
 	/* Get logical drive */
-	res = mount_volume(&label, &fs, FA_WRITE);
+	res = mount_volume(/*&label,*/ fs, FA_WRITE); // SC: setLabel unused; Terraneo leaved 3 parameters but mount volume has 2 parameter
 	if (res != FR_OK) LEAVE_FF(fs, res);
 
 #if FF_FS_EXFAT
