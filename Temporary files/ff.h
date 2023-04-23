@@ -77,6 +77,8 @@ typedef unsigned long	DWORD;	/* 32-bit unsigned integer */
 typedef WORD			WCHAR;	/* UTF-16 character type */
 #endif
 
+#define SZDIRE				32		/* Size of a directory entry */
+#define MAXDIRB(nc)	((nc + 44U) / 15 * SZDIRE)	/* exFAT: Size of directory entry block scratchpad buffer needed for the name length */
 
 /* Type of file size and LBA variables */
 
@@ -179,7 +181,7 @@ struct FATFS{
 #endif
     miosix::intrusive_ref_ptr<miosix::FileBase> drv; /* drive device */
 #if FF_FS_EXFAT
-	BYTE*	dirbuf;			/* Directory entry block scratchpad buffer for exFAT */
+	BYTE	dirbuf[MAXDIRB(FF_MAX_LFN)];			/* Directory entry block scratchpad buffer for exFAT */
 #endif
 #if !FF_FS_READONLY
 	DWORD	last_clst;		/* Last allocated cluster */

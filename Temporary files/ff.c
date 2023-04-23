@@ -212,7 +212,6 @@
 #define XDIR_FstClus		52		/* exFAT: First cluster of the file data (DWORD) */
 #define XDIR_FileSize		56		/* exFAT: File/Directory size (QWORD) */
 
-#define SZDIRE				32		/* Size of a directory entry */
 #define DDEM				0xE5	/* Deleted directory entry mark set to DIR_Name[0] */
 #define RDDEM				0x05	/* Replacement of the character collides with DDEM */
 #define LLEF				0x40	/* Last long entry flag in LDIR_Ord */
@@ -542,13 +541,12 @@ static const BYTE GUID_MS_Basic[16] = {0xA2,0xA0,0xD0,0xEB,0xE5,0xB9,0x33,0x44,0
 #error Wrong setting of FF_LFN_UNICODE
 #endif
 static const BYTE LfnOfs[] = {1,3,5,7,9,14,16,18,20,22,24,28,30};	/* FAT: Offset of LFN characters in the directory entry */
-#define MAXDIRB(nc)	((nc + 44U) / 15 * SZDIRE)	/* exFAT: Size of directory entry block scratchpad buffer needed for the name length */
 
 #if FF_USE_LFN == 1		/* LFN enabled with static working buffer */
 #if FF_FS_EXFAT
-static BYTE	DirBuf[MAXDIRB(FF_MAX_LFN)];	/* Directory entry block scratchpad buffer */
+//static BYTE	DirBuf[MAXDIRB(FF_MAX_LFN)];	/* Directory entry block scratchpad buffer */
 #endif
-static WCHAR LfnBuf[FF_MAX_LFN + 1];		/* LFN working buffer */
+//static WCHAR LfnBuf[FF_MAX_LFN + 1];		/* LFN working buffer */
 #define DEF_NAMBUF
 #define INIT_NAMBUF(fs)
 //SC: maybe add INIT_NAMBBUF2
@@ -3647,12 +3645,12 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 
 	fs->fs_type = (BYTE)fmt;/* FAT sub-type (the filesystem object gets valid) */
 	fs->id = miosix::atomicAddExchange(&Fsid,1)/*++Fsid*/;		/* Volume mount ID */
-#if FF_USE_LFN == 1
-	fs->lfnbuf = LfnBuf;	/* Static LFN working buffer */
-#if FF_FS_EXFAT
-	fs->dirbuf = DirBuf;	/* Static directory block scratchpad buuffer */
-#endif
-#endif
+//#if FF_USE_LFN == 1
+//	fs->lfnbuf = LfnBuf;	/* Static LFN working buffer */
+//#if FF_FS_EXFAT
+	//fs->dirbuf = DirBuf;	/* Static directory block scratchpad buffer */ SC: useless assegnation; it's already assigned into the struct in the header file
+//#endif
+//#endif
 #if FF_FS_RPATH != 0
 	fs->cdir = 0;			/* Initialize current directory */
 #endif
