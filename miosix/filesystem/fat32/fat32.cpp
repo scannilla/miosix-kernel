@@ -94,7 +94,7 @@ public:
             first(true), unfinished(false)
     {
         //Make sure a closedir of an uninitialized dir won't do any damage
-        dir.fs=0;
+        dir.obj.fs=0;
         fi.lfname=lfn;
         fi.lfsize=sizeof(lfn);
     }
@@ -128,7 +128,7 @@ private:
     int parentInode;   ///< Inode of '..'
     bool first;        ///< To display '.' and '..' entries
     bool unfinished;   ///< True if fi contains unread data
-    char lfn[(_MAX_LFN+1)*2]; ///< Long file name
+    char lfn[(FF_MAX_LFN+1)*2]; ///< Long file name
 };
 
 //

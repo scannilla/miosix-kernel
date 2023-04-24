@@ -1,50 +1,149 @@
-/*
- * Integration of FatFs filesystem module in Miosix by Terraneo Federico
- * based on original files diskio.c and mmc.c by ChaN
- */
+/*-----------------------------------------------------------------------*/
+/* Low level disk I/O module SKELETON for FatFs     (C)ChaN, 2019        */
+/*-----------------------------------------------------------------------*/
+/* If a working storage control module is available, it should be        */
+/* attached to the FatFs via a glue function rather than modifying it.   */
+/* This is an example of glue functions to attach various exsisting      */
+/* storage control modules to the FatFs module with a defined API.       */
+/*-----------------------------------------------------------------------*/
 
-#include "diskio.h"
+#include "ff.h"			/* Obtains integer types */
+#include "diskio.h"		/* Declarations of disk functions */
 #include "filesystem/ioctl.h"
 #include "config/miosix_settings.h"
 
-#ifdef WITH_FILESYSTEM
+/* Definitions of physical drive number for each drive */
+//#define DEV_RAM		0	/* Example: Map Ramdisk to physical drive 0 */
+//#define DEV_MMC		1	/* Example: Map MMC/SD card to physical drive 1 */
+//#define DEV_USB		2	/* Example: Map USB MSD to physical drive 2 */
 
 using namespace miosix;
 
-// #ifdef __cplusplus
-// extern "C" {
-// #endif
 
-///**
-// * \internal
-// * Initializes drive.
-// */
-//DSTATUS disk_initialize (
-//    intrusive_ref_ptr<FileBase> pdrv		/* Physical drive nmuber (0..) */
-//)
-//{
-//    if(Disk::isAvailable()==false) return STA_NODISK;
-//    Disk::init();
-//    if(Disk::isInitialized()) return RES_OK;
-//    else return STA_NOINIT;
-//}
+/*-----------------------------------------------------------------------*/
+/* Get Drive Status                                                      */
+/*-----------------------------------------------------------------------*/
 
-///**
-// * \internal
-// * Return status of drive.
-// */
 //DSTATUS disk_status (
-//    intrusive_ref_ptr<FileBase> pdrv		/* Physical drive nmuber (0..) */
+//	BYTE pdrv		/* Physical drive nmuber to identify the drive */
 //)
 //{
-//    if(Disk::isInitialized()) return RES_OK;
-//    else return STA_NOINIT;
+//	DSTATUS stat;
+//	int result;
+//
+//	switch (pdrv) {
+//	case DEV_RAM :
+//		result = RAM_disk_status();
+//
+//		// translate the reslut code here
+//
+//		return stat;
+//
+//	case DEV_MMC :
+//		result = MMC_disk_status();
+//
+//		// translate the reslut code here
+//
+//		return stat;
+//
+//	case DEV_USB :
+//		result = USB_disk_status();
+//
+//		// translate the reslut code here
+//
+//		return stat;
+//	}
+//	return STA_NOINIT;
 //}
 
-/**
- * \internal
- * Read one or more sectors from drive
- */
+
+
+/*-----------------------------------------------------------------------*/
+/* Inidialize a Drive                                                    */
+/*-----------------------------------------------------------------------*/
+/*
+DSTATUS disk_initialize (
+	BYTE pdrv				// Physical drive nmuber to identify the drive
+)
+{
+	DSTATUS stat;
+	int result;
+
+	switch (pdrv) {
+	case DEV_RAM :
+		result = RAM_disk_initialize();
+
+		// translate the reslut code here
+
+		return stat;
+
+	case DEV_MMC :
+		result = MMC_disk_initialize();
+
+		// translate the reslut code here
+
+		return stat;
+
+	case DEV_USB :
+		result = USB_disk_initialize();
+
+		// translate the reslut code here
+
+		return stat;
+	}
+	return STA_NOINIT;
+}
+*/
+
+
+/*-----------------------------------------------------------------------*/
+/* Read Sector(s)                                                        */
+/*-----------------------------------------------------------------------*/
+
+/*
+DRESULT disk_read (
+	BYTE pdrv,		// Physical drive nmuber to identify the drive 
+	BYTE *buff,		// Data buffer to store read data
+	LBA_t sector,	// Start sector in LBA 
+	UINT count		// Number of sectors to read 
+)
+{
+	DRESULT res;
+	int result;
+
+	switch (pdrv) {
+	case DEV_RAM :
+		// translate the arguments here
+
+		result = RAM_disk_read(buff, sector, count);
+
+		// translate the reslut code here
+
+		return res;
+
+	case DEV_MMC :
+		// translate the arguments here
+
+		result = MMC_disk_read(buff, sector, count);
+
+		// translate the reslut code here
+
+		return res;
+
+	case DEV_USB :
+		// translate the arguments here
+
+		result = USB_disk_read(buff, sector, count);
+
+		// translate the reslut code here
+
+		return res;
+	}
+
+	return RES_PARERR;
+}
+*/
+
 DRESULT disk_read (
     intrusive_ref_ptr<FileBase> pdrv,		/* Physical drive nmuber (0..) */
 	BYTE *buff,		/* Data buffer to store read data */
@@ -57,10 +156,56 @@ DRESULT disk_read (
     return RES_OK;
 }
 
-/**
- * \internal
- * Write one or more sectors to drive
- */
+
+
+/*-----------------------------------------------------------------------*/
+/* Write Sector(s)                                                       */
+/*-----------------------------------------------------------------------*/
+
+
+/*
+DRESULT disk_write (
+	BYTE pdrv,			// Physical drive nmuber to identify the drive 
+	const BYTE *buff,	// Data to be written
+	LBA_t sector,		// Start sector in LBA 
+	UINT count			// Number of sectors to write 
+)
+{
+	DRESULT res;
+	int result;
+
+	switch (pdrv) {
+	case DEV_RAM :
+		// translate the arguments here
+
+		result = RAM_disk_write(buff, sector, count);
+
+		// translate the reslut code here
+
+		return res;
+
+	case DEV_MMC :
+		// translate the arguments here
+
+		result = MMC_disk_write(buff, sector, count);
+
+		// translate the reslut code here
+
+		return res;
+
+	case DEV_USB :
+		// translate the arguments here
+
+		result = USB_disk_write(buff, sector, count);
+
+		// translate the reslut code here
+
+		return res;
+	}
+
+	return RES_PARERR;
+}
+*/
 DRESULT disk_write (
     intrusive_ref_ptr<FileBase> pdrv,		/* Physical drive nmuber (0..) */
 	const BYTE *buff,	/* Data to be written */
@@ -73,17 +218,43 @@ DRESULT disk_write (
     return RES_OK;
 }
 
-/**
- * \internal
- * To perform disk functions other thar read/write
- */
+
+/*-----------------------------------------------------------------------*/
+/* Miscellaneous Functions                                               */
+/*-----------------------------------------------------------------------*/
+
 DRESULT disk_ioctl (
-    intrusive_ref_ptr<FileBase> pdrv,		/* Physical drive nmuber (0..) */
-	BYTE ctrl,		/* Control code */
+	intrusive_ref_ptr<FileBase> pdrv,		/* Physical drive nmuber (0..) */
+	BYTE cmd,		/* Control code */
 	void *buff		/* Buffer to send/receive control data */
 )
 {
-    switch(ctrl)
+	DRESULT res;
+	int result;
+/*
+	switch (pdrv) {
+	case DEV_RAM :
+
+		// Process of the command for the RAM drive
+
+		return res;
+
+	case DEV_MMC :
+
+		// Process of the command for the MMC/SD card
+
+		return res;
+
+	case DEV_USB :
+
+		// Process of the command the USB drive
+
+		return res;
+	}
+
+	return RES_PARERR;
+	*/
+	switch(ctrl)
     {
         case CTRL_SYNC:
             if(pdrv->ioctl(IOCTL_SYNC,0)==0) return RES_OK; else return RES_ERROR;
@@ -105,8 +276,3 @@ DRESULT disk_ioctl (
      return 0x210000;//TODO: this stub just returns date 01/01/1980 0.00.00
  }
 
-// #ifdef __cplusplus
-// }
-// #endif
-
-#endif //WITH_FILESYSTEM
