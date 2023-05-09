@@ -132,10 +132,10 @@ typedef char TCHAR;
 struct FATFS; //Forward decl
 
 typedef struct {
-	FATFS *fs;				/* Object ID 1, volume (NULL:blank entry) */
-	DWORD clu;				/* Object ID 2, directory */
-	WORD idx;				/* Object ID 3, directory index */
-	WORD ctr;				/* Object open counter, 0:none, 0x01..0xFF:read mode open count, 0x100:write mode */
+	FATFS* fs;		// Object ID 1, volume (NULL:blank entry) 
+	DWORD clu;		// Object ID 2, containing directory (0:root) 
+	DWORD ofs;		// Object ID 3, offset in the directory 
+	UINT ctr;		// Object open counter, 0:none, 0x01..0xFF:read mode open count, 0x100:write mode
 } FILESEM;
 #endif
 
@@ -259,8 +259,9 @@ typedef struct {
 /* Directory object structure (DIR) */
 
 typedef struct {
+	FATFS*	fs;				/* Pointer to the owner file system object (**do not change order**) */
 	FFOBJID	obj;			/* Object identifier */
-	DWORD	dptr;			/* Current read/write offset */
+	DWORD	dptr;			/* Current read/write offset */ //SC:in terraneo version was index
 	DWORD	clust;			/* Current cluster */
 	LBA_t	sect;			/* Current sector (0:Read operation has terminated) */
 	BYTE*	dir;			/* Pointer to the directory item in the win[] */
@@ -285,6 +286,9 @@ typedef struct {
 #if FF_USE_LFN
 	TCHAR	altname[FF_SFN_BUF + 1];/* Alternative file name */
 	TCHAR	fname[FF_LFN_BUF + 1];	/* Primary file name */
+
+	/*TCHAR*/char *lfname;			/* Pointer to the LFN buffer */ // by SC: added in order to respect the fatfs API (maybe this variable is useless)
+	UINT 	lfsize;			/* Size of LFN buffer in TCHAR */ // by SC: added in order to respect the fatfs API (maybe this variable is useless)
 #else
 	TCHAR	fname[12 + 1];	/* File name */
 #endif

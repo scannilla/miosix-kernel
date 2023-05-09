@@ -81,5 +81,3 @@ DRESULT disk_ioctl (miosix::intrusive_ref_ptr<miosix::FileBase> pdrv,
 //}
 //#endif
 #endif
-
-#endif
