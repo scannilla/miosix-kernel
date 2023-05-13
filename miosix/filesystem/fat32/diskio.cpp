@@ -254,7 +254,7 @@ DRESULT disk_ioctl (
 
 	return RES_PARERR;
 	*/
-	switch(ctrl)
+	switch(cmd)
     {
         case CTRL_SYNC:
             if(pdrv->ioctl(IOCTL_SYNC,0)==0) return RES_OK; else return RES_ERROR;
@@ -265,6 +265,8 @@ DRESULT disk_ioctl (
         default:
             return RES_PARERR;
     }
+
+	return RES_ERROR; // added to avoid the error, it should be unreachanle code
 }
 
 /**

@@ -2901,7 +2901,7 @@ static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not cr
 	for (;;) {
 		wc = miosix::Unicode::nextUtf8(p);/*p[si++];*/					/* Get a character */
 		if(wc == miosix::Unicode::invalid || wc > 0xffff) return FR_INVALID_NAME;
-		uc = tchar2uni(&p);			/* Get a character */
+		//uc = tchar2uni(&p);			/* Get a character */
 		if (uc == 0xFFFFFFFF) return FR_INVALID_NAME;		/* Invalid code or UTF decode error */
 		if (uc >= 0x10000) lfn[di++] = (WCHAR)(uc >> 16);	/* Store high surrogate if needed */
 		wc = (WCHAR)uc;
@@ -3469,7 +3469,7 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 	/* Following code attempts to mount the volume. (find an FAT volume, analyze the BPB and initialize the filesystem object) */
 
 	fs->fs_type = 0;					/* Invalidate the filesystem object */
-	stat = disk_initialize(fs->drv);	/* Initialize the volume hosting physical drive */
+	stat = RES_OK;//disk_initialize(fs->drv);	/* Initialize the volume hosting physical drive */
 	if (stat & STA_NOINIT) { 			/* Check if the initialization succeeded */
 		return FR_NOT_READY;			/* Failed to initialize due to no medium or hard error */
 	}
@@ -3675,9 +3675,9 @@ static FRESULT validate (	/* Returns FR_OK or FR_INVALID_OBJECT */
 			res = FR_TIMEOUT;
 		}
 #else
-		if (!(disk_status(obj->fs->drv) & STA_NOINIT)) { /* Test if the hosting phsical drive is kept initialized */
+		//if (!(disk_status(obj->fs->drv) & STA_NOINIT)) { /* Test if the hosting phsical drive is kept initialized */
 			res = FR_OK;
-		}
+		//}
 #endif
 	}
 	*rfs = (res == FR_OK) ? obj->fs : 0;	/* Return corresponding filesystem object if it is valid */
@@ -3715,10 +3715,10 @@ FRESULT f_mount (
 	/* Get volume ID (logical drive number) */
 	vol = 0;//get_ldnumber(&path);
 	if (vol < 0) return FR_INVALID_DRIVE;
-	cfs = FatFs[vol];			/* Pointer to the filesystem object of the volume */
+	cfs = fs;//FatFs[vol];			/* Pointer to the filesystem object of the volume */
 
 	if (/*cfs*/umount) {					/* Unregister current filesystem object if regsitered */
-		FatFs[vol] = 0;
+		fs = 0;
 #if FF_FS_LOCK
 		clear_share(cfs);
 #endif
@@ -3729,7 +3729,7 @@ FRESULT f_mount (
 	}
 
 	if (/*fs*/!umount) {					/* Register new filesystem object */
-		fs->pdrv = LD2PD(vol);	/* Volume hosting physical drive */
+		//fs->pdrv = LD2PD(vol);	/* Volume hosting physical drive */
 		memset(fs->Files,0,sizeof(FATFS::Files));
 #if FF_FS_REENTRANT				/* Create a volume mutex */
 		fs->ldrv = (BYTE)vol;	/* Owner volume ID */
@@ -3806,7 +3806,7 @@ FRESULT f_open (
 			if (res != FR_OK) {					/* No file, create new */
 				if (res == FR_NO_FILE) {		/* There is no file to open, create a new entry */
 #if FF_FS_LOCK
-					res = enq_share() ? dir_register(&dj) : FR_TOO_MANY_OPEN_FILES;
+					res = enq_share(dj.obj.fs) ? dir_register(&dj) : FR_TOO_MANY_OPEN_FILES;
 #else
 					res = dir_register(&dj);
 #endif
@@ -3940,7 +3940,7 @@ FRESULT f_open (
 					}
 				}
 #if FF_FS_LOCK
-				if (res != FR_OK) dec_share(fp->obj.lockid); /* Decrement file open counter if seek failed */
+				if (res != FR_OK) dec_share(fs, fp->obj.lockid); /* Decrement file open counter if seek failed */
 #endif
 			}
 #endif
@@ -4278,7 +4278,7 @@ FRESULT f_close (
 		res = validate(&fp->obj, &fs);	/* Lock volume */
 		if (res == FR_OK) {
 #if FF_FS_LOCK
-			res = dec_share(fp->obj.lockid);		/* Decrement file open counter */
+			res = dec_share(fs, fp->obj.lockid);		/* Decrement file open counter */
 			if (res == FR_OK) fp->obj.fs = 0;	/* Invalidate file object */
 #else
 			fp->obj.fs = 0;	/* Invalidate file object */
@@ -4722,7 +4722,7 @@ FRESULT f_closedir (
 	res = validate(&dp->obj, &fs);	/* Check validity of the file object */
 	if (res == FR_OK) {
 #if FF_FS_LOCK
-		if (dp->obj.lockid) res = dec_share(dp->obj.lockid);	/* Decrement sub-directory open counter */
+		if (dp->obj.lockid) res = dec_share(fs, dp->obj.lockid);	/* Decrement sub-directory open counter */
 		if (res == FR_OK) dp->obj.fs = 0;	/* Invalidate directory object */
 #else
 		dp->obj.fs = 0;	/* Invalidate directory object */
@@ -5019,7 +5019,7 @@ FRESULT f_unlink (
 )
 {
 	FRESULT res;
-	DIR dj, sdj;
+	DIR_ dj, sdj;
 	DWORD dclst = 0;
 #if FF_FS_EXFAT
 	FFOBJID obj;
@@ -5202,7 +5202,7 @@ FRESULT f_rename (
 	DEF_NAMBUF
 
 
-	get_ldnumber(&path_new);						/* Snip the drive number of new name off */
+	//get_ldnumber(&path_new);						/* Snip the drive number of new name off */ // by SC: n the older version of miosix this function was commented by terraneo and never used
 	res = mount_volume(/*&path_old,*/ fs, FA_WRITE);	/* Get logical drive of the old object */
 	if (res == FR_OK) {
 		djo.obj.fs = fs;
