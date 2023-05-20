@@ -559,7 +559,7 @@ int FilesystemManager::umount(const char* path, bool force)
     {
         for(int i=0;i<MAX_OPEN_FILES;i++)
         {
-            intrusive_ref_ptr<FileBase> file=(*it3)->getFile(i);
+             file=(*it3)->getFile(i);
             if(!file) continue;
             vector<fsIt>::iterator it4;
             for(it4=fsToUmount.begin();it4!=fsToUmount.end();++it4)

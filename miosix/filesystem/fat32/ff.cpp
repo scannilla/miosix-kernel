@@ -2901,7 +2901,7 @@ static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not cr
 	for (;;) {
 		wc = miosix::Unicode::nextUtf8(p);/*p[si++];*/					/* Get a character */
 		if(wc == miosix::Unicode::invalid || wc > 0xffff) return FR_INVALID_NAME;
-		//uc = tchar2uni(&p);			/* Get a character */
+		uc = miosix::Unicode::nextUtf8(p);			/* Get a character */
 		if (uc == 0xFFFFFFFF) return FR_INVALID_NAME;		/* Invalid code or UTF decode error */
 		if (uc >= 0x10000) lfn[di++] = (WCHAR)(uc >> 16);	/* Store high surrogate if needed */
 		wc = (WCHAR)uc;
@@ -3729,7 +3729,7 @@ FRESULT f_mount (
 	}
 
 	if (/*fs*/!umount) {					/* Register new filesystem object */
-		//fs->pdrv = LD2PD(vol);	/* Volume hosting physical drive */
+		// fs->drv = LD2PD(vol);	/* Volume hosting physical drive */ //by SC: Terraneo never assigns this value, to check if it's needed
 		memset(fs->Files,0,sizeof(FATFS::Files));
 #if FF_FS_REENTRANT				/* Create a volume mutex */
 		fs->ldrv = (BYTE)vol;	/* Owner volume ID */
