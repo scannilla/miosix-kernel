@@ -184,6 +184,7 @@ void mpuTest10();
 //main(), calls all tests
 int main()
 {
+    iprintf("SC: Starting now\n");
     srand(0);
     //The priority of the test thread must be 0
     Thread::setPriority(0);
