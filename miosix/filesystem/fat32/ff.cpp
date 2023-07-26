@@ -4840,8 +4840,8 @@ FRESULT f_stat (
 	DIR_ dj;
 	DEF_NAMBUF;
 
-
 	/* Get logical drive */
+	dj.obj.fs = fs;
 	res = mount_volume(/*&path,*/ dj.obj.fs, 0);
 	if (res == FR_OK) {
 		INIT_NAMBUF(dj.obj.fs);
