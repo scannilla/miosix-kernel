@@ -2899,9 +2899,8 @@ static FRESULT create_name (	/* FR_OK: successful, FR_INVALID_NAME: could not cr
 	/* Create LFN into LFN working buffer */
 	p = *path; lfn = dp->obj.fs->lfnbuf; di = 0;
 	for (;;) {
-		wc = miosix::Unicode::nextUtf8(p);/*p[si++];*/					/* Get a character */
-		if(wc == miosix::Unicode::invalid || wc > 0xffff) return FR_INVALID_NAME;
-		uc = miosix::Unicode::nextUtf8(p);			/* Get a character */
+		uc = miosix::Unicode::nextUtf8(p);/*p[si++];*/					/* Get a character */
+		if(uc == miosix::Unicode::invalid || uc > 0xffff) return FR_INVALID_NAME;
 		if (uc == 0xFFFFFFFF) return FR_INVALID_NAME;		/* Invalid code or UTF decode error */
 		if (uc >= 0x10000) lfn[di++] = (WCHAR)(uc >> 16);	/* Store high surrogate if needed */
 		wc = (WCHAR)uc;
