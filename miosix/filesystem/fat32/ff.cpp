@@ -985,10 +985,10 @@ static FRESULT chk_share (	/* Check if the file can be accessed */
 	/* Search open object table for the object */
 	be = 0;
 	for (i = 0; i < FF_FS_LOCK; i++) {
-		if (dp->fs->Files[i].fs) {	/* Existing entry */
-			if (dp->fs->Files[i].fs == dp->obj.fs &&	 	/* Check if the object matches with an open object */
-				dp->fs->Files[i].clu == dp->obj.sclust &&
-				dp->fs->Files[i].ofs == dp->dptr) break;
+		if (dp->obj.fs->Files[i].fs) {	/* Existing entry */
+			if (dp->obj.fs->Files[i].fs == dp->obj.fs &&	 	/* Check if the object matches with an open object */
+				dp->obj.fs->Files[i].clu == dp->obj.sclust &&
+				dp->obj.fs->Files[i].ofs == dp->dptr) break;
 		} else {			/* Blank entry */
 			be = 1;
 		}
@@ -998,7 +998,7 @@ static FRESULT chk_share (	/* Check if the file can be accessed */
 	}
 
 	/* The object was opened. Reject any open against writing file and all write mode open */
-	return (acc != 0 || dp->fs->Files[i].ctr == 0x100) ? FR_LOCKED : FR_OK;
+	return (acc != 0 || dp->obj.fs->Files[i].ctr == 0x100) ? FR_LOCKED : FR_OK;
 }
 
 
@@ -1020,23 +1020,23 @@ static UINT inc_share (	/* Increment object open counter and returns its index (
 
 
 	for (i = 0; i < FF_FS_LOCK; i++) {	/* Find the object */
-		if (dp->fs->Files[i].fs == dp->obj.fs
-		 && dp->fs->Files[i].clu == dp->obj.sclust
-		 && dp->fs->Files[i].ofs == dp->dptr) break;
+		if (dp->obj.fs->Files[i].fs == dp->obj.fs
+		 && dp->obj.fs->Files[i].clu == dp->obj.sclust
+		 && dp->obj.fs->Files[i].ofs == dp->dptr) break;
 	}
 
 	if (i == FF_FS_LOCK) {			/* Not opened. Register it as new. */
-		for (i = 0; i < FF_FS_LOCK && dp->fs->Files[i].fs; i++) ;	/* Find a free entry */
+		for (i = 0; i < FF_FS_LOCK && dp->obj.fs->Files[i].fs; i++) ;	/* Find a free entry */
 		if (i == FF_FS_LOCK) return 0;	/* No free entry to register (int err) */
-		dp->fs->Files[i].fs = dp->obj.fs;
-		dp->fs->Files[i].clu = dp->obj.sclust;
-		dp->fs->Files[i].ofs = dp->dptr;
-		dp->fs->Files[i].ctr = 0;
+		dp->obj.fs->Files[i].fs = dp->obj.fs;
+		dp->obj.fs->Files[i].clu = dp->obj.sclust;
+		dp->obj.fs->Files[i].ofs = dp->dptr;
+		dp->obj.fs->Files[i].ctr = 0;
 	}
 
-	if (acc >= 1 && dp->fs->Files[i].ctr) return 0;	/* Access violation (int err) */
+	if (acc >= 1 && dp->obj.fs->Files[i].ctr) return 0;	/* Access violation (int err) */
 
-	dp->fs->Files[i].ctr = acc ? 0x100 : dp->fs->Files[i].ctr + 1;	/* Set semaphore value */
+	dp->obj.fs->Files[i].ctr = acc ? 0x100 : dp->obj.fs->Files[i].ctr + 1;	/* Set semaphore value */
 
 	return i + 1;	/* Index number origin from 1 */
 }

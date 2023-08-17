@@ -259,7 +259,6 @@ typedef struct {
 /* Directory object structure (DIR) */
 
 typedef struct {
-	FATFS*	fs;				/* Pointer to the owner file system object (**do not change order**) */
 	FFOBJID	obj;			/* Object identifier */
 	DWORD	dptr;			/* Current read/write offset */ //SC:in terraneo version was index
 	DWORD	clust;			/* Current cluster */
